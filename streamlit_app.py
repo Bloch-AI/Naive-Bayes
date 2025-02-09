@@ -3,6 +3,11 @@ import pandas as pd
 import re
 from collections import Counter
 import matplotlib.pyplot as plt
+import nltk
+
+# Ensure the necessary NLTK data is downloaded
+nltk.download('wordnet', quiet=True)
+nltk.download('omw-1.4', quiet=True)
 
 # Import NLTK components for stopwords and lemmatization
 from nltk.corpus import stopwords
@@ -39,7 +44,7 @@ def custom_tokenizer(text):
     # Initialize the lemmatizer
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = []
-    # For a better lemmatisation, try verb then noun
+    # For a better lemmatization, try verb then noun
     for token in tokens:
         lemma = lemmatizer.lemmatize(token, pos='v')
         if lemma == token:
