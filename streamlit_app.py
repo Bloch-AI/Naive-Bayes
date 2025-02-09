@@ -160,7 +160,7 @@ def plot_token_sentiments(token_df):
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
     scores = token_df["Score"]
-    # Green for positive scores, red for negative
+    # Assign colours: green for positive scores, red for negative, gray for 0.
     colors = ['green' if score > 0 else 'red' if score < 0 else 'gray' for score in scores]
     ax.bar(tokens, scores, color=colors)
     ax.axhline(0, color='black', linewidth=0.8)
@@ -221,9 +221,10 @@ if st.button("Predict Sentiment"):
             if not token_df.empty:
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
-                For each token, the score is the difference between its log probability for the positive and negative classes.
-                Green indicates a positive association; red indicates a negative association.
+                The following table shows the tokens found in your review along with their sentiment association scores.
+                A positive score (green) indicates a positive association, while a negative score (red) indicates a negative association.
                 """)
+                st.dataframe(token_df)
                 plot_token_sentiments(token_df)
             else:
                 st.write("No token-level sentiment data available.")
