@@ -173,7 +173,7 @@ def plot_token_sentiments(token_df):
 # =============================================================================
 # Streamlit App Layout
 # =============================================================================
-st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
+st.title("Naive Bayes Simulator for Restaurant Reviews")
 
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
