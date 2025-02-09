@@ -121,7 +121,7 @@ def train_model(nb_variant):
 # =============================================================================
 # Streamlit App Layout
 # =============================================================================
-st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
+st.title("Naive Bayes Simulator for Restaurant Reviews")
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
 This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
