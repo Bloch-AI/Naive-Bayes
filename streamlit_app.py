@@ -1,26 +1,24 @@
 import os
 import nltk
 
-# Set up NLTK data directory and download required resources if necessary.
+# Set up a local directory for NLTK data.
 nltk_data_dir = os.path.join(os.getcwd(), 'nltk_data')
 if not os.path.exists(nltk_data_dir):
     os.mkdir(nltk_data_dir)
+
+# Ensure Python knows to look in our local directory.
+os.environ["NLTK_DATA"] = nltk_data_dir
 nltk.data.path.append(nltk_data_dir)
-for resource, path in [('punkt', 'tokenizers/punkt'), ('stopwords', 'corpora/stopwords')]:
-    try:
-        nltk.data.find(path)
-    except LookupError:
-        nltk.download(resource, download_dir=nltk_data_dir)
+
+# Force download of the required NLTK resources unconditionally.
+nltk.download('punkt', download_dir=nltk_data_dir, quiet=True)
+nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
 
 import streamlit as st
 import pandas as pd
 import string
 from collections import Counter
 import matplotlib.pyplot as plt
-
-# Download NLTK resources (only needed on first run)
-nltk.download('punkt')
-nltk.download('stopwords')
 
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
