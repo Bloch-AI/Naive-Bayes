@@ -328,11 +328,16 @@ if st.button("Predict Sentiment"):
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
                 # Force neutrality if the overall log difference is within the threshold.
-                if abs(overall_log_diff) < neutral_threshold:
+                if abs(overall_log_diff) <= neutral_threshold:  # Note the use of '<='
                     overall_log_diff = 0
                     overall_sentiment = "Neutral"
                 else:
                     overall_sentiment = "Positive" if overall_log_diff > 0 else "Negative"
+                
+                # Override the earlier printed prediction for discrete models
+                st.subheader("Prediction (Recalculated from Token Analysis)")
+                st.write(f"**Sentiment:** {overall_sentiment}")
+
                 
                 # Override the earlier printed prediction for discrete models
                 st.subheader("Prediction (Recalculated from Token Analysis)")
