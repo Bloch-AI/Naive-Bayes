@@ -1,10 +1,34 @@
+#**********************************************
+# Naive Bayes Demo App
+# Version 1.0
+# 5th September 2024
+# Your Name
+# your.email@example.com
+#**********************************************
+# This Python code creates a web-based application using Streamlit to demonstrate
+# the use of Naive Bayes classifiers for sentiment analysis of text reviews.
+# The application allows users to enter a restaurant review and select one of three Naive Bayes variants:
+# - Multinomial NB
+# - Bernoulli NB
+# - Gaussian NB
+#
+# The code performs the following key steps:
+# 1. Preprocesses text (tokenization, lemmatization, and removal of stopwords, including domain-specific words).
+# 2. Trains the classifier on a predefined dataset of positive and negative reviews.
+# 3. Provides an interactive input for sentiment analysis.
+# 4. Displays visualizations and a worked numerical calculation explaining the model's decision.
+#
+# For discrete NB models (Multinomial and Bernoulli), token-level sentiment associations are calculated and shown.
+# For Gaussian NB, a pie chart of class probability distribution and overall probability calculations are displayed.
+#**********************************************
+
 import streamlit as st
 import pandas as pd
 import re
 import matplotlib.pyplot as plt
 import nltk
 
-# Ensure the necessary NLTK data is downloaded
+# Ensure necessary NLTK data is downloaded for lemmatization
 nltk.download('wordnet', quiet=True)
 nltk.download('omw-1.4', quiet=True)
 
@@ -13,37 +37,40 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
 # =============================================================================
-# Custom Tokenizer (using regex and lemmatization)
+# Custom Tokenizer Function
 # =============================================================================
 def custom_tokenizer(text):
     """
-    Converts text to lowercase, extracts words using a regular expression,
-    removes both standard stop words and domain-specific tokens, and applies lemmatization.
-    This preserves words like "friendly" rather than reducing them to "friend".
+    Preprocess the input text by:
+    - Converting to lowercase
+    - Extracting words using a regular expression
+    - Removing standard stopwords and domain-specific tokens (e.g. "food", "service")
+    - Applying lemmatization to preserve the natural form (e.g. "friendly" remains "friendly")
+    Returns a list of processed tokens.
     """
     text = text.lower()
     # Extract words (sequences of alphanumeric characters)
     tokens = re.findall(r'\b\w+\b', text)
     
-    # Load NLTK stopwords (if available)
+    # Load NLTK stopwords if available; otherwise use an empty set.
     try:
         nltk_stopwords = set(stopwords.words('english'))
     except LookupError:
         nltk_stopwords = set()
     
-    # Domain-specific tokens to remove (common words that add little discriminative value)
+    # Domain-specific tokens to remove (common words with low discriminative value)
     domain_stopwords = {"food", "service", "restaurant", "meal", "dining"}
     
     # Combine standard and domain-specific stopwords
     all_stopwords = nltk_stopwords.union(domain_stopwords)
     
-    # Filter out tokens that are in the combined stopword list
+    # Remove stopwords from tokens
     tokens = [token for token in tokens if token not in all_stopwords]
     
-    # Initialize the lemmatizer
+    # Initialize WordNetLemmatizer and perform lemmatization
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = []
-    # For better lemmatization, try as verb then noun
+    # Try lemmatizing as a verb first, then as a noun
     for token in tokens:
         lemma = lemmatizer.lemmatize(token, pos='v')
         if lemma == token:
@@ -53,7 +80,7 @@ def custom_tokenizer(text):
     return lemmatized_tokens
 
 # =============================================================================
-# Expanded Training Data (UK English)
+# Predefined Training Data (UK English Reviews)
 # =============================================================================
 def get_training_data():
     positive_reviews = [
@@ -108,14 +135,18 @@ def get_training_data():
     return pd.DataFrame({"review": reviews, "sentiment": sentiments})
 
 # =============================================================================
-# Train Model (with caching)
+# Model Training Function (with caching)
 # =============================================================================
 @st.cache_resource
 def train_model(nb_variant):
+    """
+    Trains a Naive Bayes classifier based on the selected variant.
+    Uses a TfidfVectorizer with the custom_tokenizer on a predefined dataset.
+    Returns the trained model and the vectorizer.
+    """
     from sklearn.feature_extraction.text import TfidfVectorizer
     
     df = get_training_data()
-    # Create a TfidfVectorizer that uses our custom tokenizer (which handles lowercasing)
     vectorizer = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
     X = vectorizer.fit_transform(df['review'])
     y = df['sentiment']
@@ -140,13 +171,16 @@ def train_model(nb_variant):
     return model, vectorizer
 
 # =============================================================================
-# Compute Token-Level Sentiment Association
-# (Works for discrete NB models that provide feature_log_prob_)
+# Token-Level Sentiment Association (for discrete NB models)
 # =============================================================================
 def get_token_sentiments(tokens, model, vectorizer):
+    """
+    For Multinomial and Bernoulli NB models, compute the difference in log-probabilities
+    for each unique token between the Positive and Negative classes.
+    Returns a DataFrame sorted by the token's contribution.
+    """
     token_sentiments = []
     classes = model.classes_
-    # Only compute if both positive and negative classes are present
     if "Positive" in classes and "Negative" in classes:
         pos_index = list(classes).index("Positive")
         neg_index = list(classes).index("Negative")
@@ -166,13 +200,16 @@ def get_token_sentiments(tokens, model, vectorizer):
         return pd.DataFrame()
 
 # =============================================================================
-# Plot Token-Level Sentiment Association
+# Visualization Function for Token-Level Sentiment
 # =============================================================================
 def plot_token_sentiments(token_df):
+    """
+    Creates a bar chart of token-level sentiment associations.
+    Tokens with positive scores are shown in green, negative scores in red.
+    """
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
     scores = token_df["Score"]
-    # Assign colours: green for positive scores, red for negative, gray for 0.
     colors = ['green' if score > 0 else 'red' if score < 0 else 'gray' for score in scores]
     ax.bar(tokens, scores, color=colors)
     ax.axhline(0, color='black', linewidth=0.8)
@@ -183,37 +220,29 @@ def plot_token_sentiments(token_df):
     st.pyplot(fig)
 
 # =============================================================================
-# Streamlit App Layout
+# Main App Layout and Functionality
 # =============================================================================
-st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
-
+st.title("Naive Bayes Demo App for Sentiment Analysis")
 st.markdown("""
-Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
-This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
-With an expanded training dataset and refined tokenisation (using lemmatization and removing common domain words),  
-the classifier should now provide more accurate predictions.
+This application demonstrates how a Naive Bayes classifier can be used for sentiment analysis.
+Enter a restaurant review and choose a Naive Bayes variant (Multinomial, Bernoulli, or Gaussian) to see the prediction,
+detailed token-level analysis (for discrete models), and a worked numerical calculation that explains the overall decision.
 """)
 
-# -----------------------------
-# Sidebar Configuration
-# -----------------------------
-st.sidebar.header("Configuration")
+# Sidebar for model selection
+st.sidebar.header("Model Configuration")
 nb_variant = st.sidebar.selectbox("Select Naive Bayes Variant", options=["Multinomial", "Bernoulli", "Gaussian"])
 
-# -----------------------------
-# Train the Model
-# -----------------------------
+# Train the selected model
 model, vectorizer = train_model(nb_variant)
 
-# -----------------------------
-# User Input and Prediction
-# -----------------------------
+# Input section for user review
 st.subheader("Enter a Restaurant Review")
 default_review = "I loved the delicious food and friendly service."
 user_review = st.text_area("Your Review:", default_review)
 
 if st.button("Predict Sentiment"):
-    # Tokenise the review first.
+    # Preprocess the review text
     tokens = custom_tokenizer(user_review)
     if not tokens:
         st.subheader("Prediction")
@@ -221,17 +250,15 @@ if st.button("Predict Sentiment"):
         st.markdown("### Result Explanation")
         st.write("The review did not yield any tokens after pre-processing. This may be due to the removal of common words. In such cases, there isn’t enough information for the classifier, so the sentiment is treated as Neutral.")
     else:
+        # Transform the review into features
         X_new = vectorizer.transform([user_review])
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Obtain probability estimates.
+        # Obtain probability estimates and determine overall sentiment
         proba = model.predict_proba(X_new)[0]
-        # Determine indices based on model.classes_ (which is usually sorted alphabetically)
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
-        
-        # If the probability difference is less than 0.1, consider the result Neutral.
         if abs(proba[pos_index] - proba[neg_index]) < 0.1:
             overall_sentiment = "Neutral"
         else:
@@ -240,35 +267,36 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {overall_sentiment}")
         
-        # Narrative explanation for the result.
+        # Narrative explanation of the result
         st.markdown("### Result Explanation")
         if overall_sentiment == "Positive":
-            st.write("The review is classified as **Positive** because the tokens extracted (such as 'love', 'delicious', and 'friendly') show strong positive associations in the model, contributing to a higher probability for the positive class.")
+            st.write("The review is classified as **Positive** because the tokens extracted (e.g. 'love', 'delicious', 'friendly') show strong positive associations in the model, contributing to a higher probability for the positive class.")
         elif overall_sentiment == "Negative":
-            st.write("The review is classified as **Negative** because some tokens have strong negative associations. Please review the token-level analysis below for more details.")
+            st.write("The review is classified as **Negative** because some tokens have strong negative associations. Please review the detailed token analysis below for more information.")
         else:
-            st.write("The review is classified as **Neutral** because the difference between positive and negative probabilities is small, indicating insufficient evidence to strongly classify the review as positive or negative.")
+            st.write("The review is classified as **Neutral** because the difference between positive and negative probabilities is small, indicating insufficient evidence for a strong classification.")
         
-        # Add algorithm-specific narrative.
+        # Provide algorithm-specific explanation
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** In this model, tokens are treated as binary features (present or absent), so the token-level scores reflect the log-probability differences based solely on token presence. This differs from Multinomial NB, which also considers token frequency.")
+            st.write("**Note for Bernoulli NB:** Tokens are treated as binary features (present/absent), so token-level scores reflect log-probability differences based solely on token presence.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** In this model, token frequency is taken into account. Tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
+            st.write("**Note for Multinomial NB:** Token frequency is taken into account, so tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
         
-        # For discrete NB models, display token-level sentiment associations.
+        # For discrete NB models, display token-level sentiment details and a worked calculation.
         if nb_variant in ["Multinomial", "Bernoulli"]:
             token_df = get_token_sentiments(tokens, model, vectorizer)
             if not token_df.empty:
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
-                The table below shows the tokens found in your review along with their sentiment association scores.
+                The table below shows the tokens extracted from your review along with their sentiment association scores.
                 A positive score indicates a positive association, while a negative score indicates a negative association.
                 """)
+                # Render the DataFrame as HTML without the index
                 html_table = token_df.reset_index(drop=True).to_html(index=False)
                 st.markdown(html_table, unsafe_allow_html=True)
                 plot_token_sentiments(token_df)
                 
-                # --- Worked Numerical Calculation for discrete NB ---
+                # --- Worked Numerical Calculation for Discrete NB ---
                 st.markdown("### Worked Numerical Calculation (Discrete NB)")
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
                 token_sum = token_df["Score"].sum()
@@ -292,11 +320,12 @@ if st.button("Predict Sentiment"):
                 st.markdown(calc_str)
             else:
                 st.write("No token-level sentiment data available.")
+        
+        # For Gaussian NB, display class probability distribution and a worked calculation.
         elif nb_variant == "Gaussian":
-            # --- For Gaussian NB, display a pie chart and numerical calculation based on overall probabilities ---
             st.subheader("Gaussian NB: Class Probability Distribution")
             st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
-            # Create dynamic colors: assign green for Positive, red for Negative.
+            # Map classes to colors: Positive=green, Negative=red (others=gray)
             colors = [("green" if cls == "Positive" else "red" if cls == "Negative" else "gray") for cls in model.classes_]
             fig, ax = plt.subplots()
             ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=colors)
@@ -317,11 +346,31 @@ if st.button("Predict Sentiment"):
         else:
             st.write("Token-level sentiment association is not available for the selected model.")
 
-st.markdown("""
----
-### How Does Naive Bayes Work?
-Naive Bayes calculates the probability that a document (or review) belongs to a given class (e.g. Positive or Negative)  
-by combining the probabilities of each token (word) appearing in documents of that class.  
-Despite the ‘naive’ assumption that each token is independent, the algorithm works remarkably well in practice.  
-This demo illustrates how pre‑processing steps — such as tokenisation, stop word removal, and lemmatization — prepare the text for classification.
-""")
+# =============================================================================
+# Footer Section
+# =============================================================================
+footer = st.container()
+footer.markdown(
+    '''
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: black;
+        color: white;
+        text-align: center;
+        padding: 10px 0;
+    }
+    </style>
+    <div class="footer">
+        <p>© 2024 Bloch AI LTD - All Rights Reserved. <a href="https://www.bloch.ai" style="color: white;">www.bloch.ai</a></p>
+    </div>
+    ''',
+    unsafe_allow_html=True
+)
+
+#**********************************************
+# End of Naive Bayes Demo App
+#**********************************************
