@@ -49,28 +49,19 @@ def custom_tokenizer(text):
     Returns a list of processed tokens.
     """
     text = text.lower()
-    # Extract words (sequences of alphanumeric characters)
     tokens = re.findall(r'\b\w+\b', text)
     
-    # Load NLTK stopwords if available; otherwise use an empty set.
     try:
         nltk_stopwords = set(stopwords.words('english'))
     except LookupError:
         nltk_stopwords = set()
     
-    # Domain-specific tokens to remove (common words with low discriminative value)
     domain_stopwords = {"food", "service", "restaurant", "meal", "dining"}
-    
-    # Combine standard and domain-specific stopwords
     all_stopwords = nltk_stopwords.union(domain_stopwords)
-    
-    # Remove stopwords from tokens
     tokens = [token for token in tokens if token not in all_stopwords]
     
-    # Initialize WordNetLemmatizer and perform lemmatization
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = []
-    # Try lemmatizing as a verb first, then as a noun
     for token in tokens:
         lemma = lemmatizer.lemmatize(token, pos='v')
         if lemma == token:
@@ -131,7 +122,6 @@ def get_training_data():
     
     reviews = positive_reviews + negative_reviews
     sentiments = ["Positive"] * len(positive_reviews) + ["Negative"] * len(negative_reviews)
-    
     return pd.DataFrame({"review": reviews, "sentiment": sentiments})
 
 # =============================================================================
@@ -162,7 +152,6 @@ def train_model(nb_variant):
     elif nb_variant == "Gaussian":
         from sklearn.naive_bayes import GaussianNB
         model = GaussianNB()
-        # GaussianNB requires a dense array
         model.fit(X.toarray(), y)
     else:
         st.error("Unsupported Naive Bayes variant selected.")
@@ -205,7 +194,7 @@ def get_token_sentiments(tokens, model, vectorizer):
 def plot_token_sentiments(token_df):
     """
     Creates a bar chart of token-level sentiment associations.
-    Tokens with positive scores are shown in green; negative in red.
+    Tokens with positive scores are shown in green; those with negative scores in red.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
@@ -259,7 +248,6 @@ if st.button("Predict Sentiment"):
         proba = model.predict_proba(X_new)[0]
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
-        # Use threshold: if the probability difference is less than 0.1, classify as Neutral.
         if abs(proba[pos_index] - proba[neg_index]) < 0.1:
             overall_sentiment = "Neutral"
         else:
@@ -268,7 +256,7 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {overall_sentiment}")
         
-        # Narrative explanation for the result
+        # Narrative explanation of the result
         st.markdown("### Result Explanation")
         if overall_sentiment == "Positive":
             st.write("The review is classified as **Positive** because the tokens extracted (e.g. 'love', 'delicious', 'friendly') show strong positive associations in the model, contributing to a higher probability for the positive class.")
@@ -277,11 +265,11 @@ if st.button("Predict Sentiment"):
         else:
             st.write("The review is classified as **Neutral** because the difference between positive and negative probabilities is small, indicating insufficient evidence for a strong classification.")
         
-        # Algorithm-specific explanation
+        # Provide algorithm-specific explanation
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** Tokens are treated as binary features (present/absent), so token-level scores reflect log-probability differences based solely on token presence.")
+            st.write("**Note for Bernoulli NB:** In this model, tokens are treated as binary features (present/absent). This means that token frequency is not considered; each token's contribution is based solely on whether it is present in the review.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** Token frequency is taken into account; tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
+            st.write("**Note for Multinomial NB:** In this model, token frequency is taken into account; tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
         
         # For discrete NB models, display token-level sentiment analysis and a worked calculation.
         if nb_variant in ["Multinomial", "Bernoulli"]:
@@ -369,7 +357,7 @@ footer.markdown(
     }
     </style>
     <div class="footer">
-        <p>© 2024 Bloch AI LTD - All Rights Reserved. <a href="https://www.bloch.ai" style="color: white;">www.bloch.ai</a></p>
+        <p>© 2025 Bloch AI LTD - All Rights Reserved. <a href="https://www.bloch.ai" style="color: white;">www.bloch.ai</a></p>
     </div>
     ''',
     unsafe_allow_html=True
