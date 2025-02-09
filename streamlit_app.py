@@ -27,7 +27,7 @@
 # For Gaussian NB, a pie chart of class probabilities is displayed alongside a simple calculation.
 #
 # An interactive slider lets the user adjust the "Neutrality Threshold" – if the difference
-# between the Positive and Negative scores is below (or exactly equal to) this value, the review is shown as Neutral.
+# between the Positive and Negative scores is below this value, the review is shown as Neutral.
 #**********************************************
 
 import streamlit as st
@@ -237,7 +237,7 @@ nb_variant = st.sidebar.selectbox("Select Naive Bayes Variant", options=["Multin
 st.sidebar.markdown("""
 **Neutrality Threshold:**  
 Use the slider to set the minimum difference between the Positive and Negative scores for a review to be classified as non-neutral.
-If the difference is below (or exactly equal to) this threshold, the review will be shown as **Neutral**.
+If the difference is below this threshold, the review will be shown as **Neutral**.
 This helps to handle borderline cases.
 """)
 neutral_threshold = st.sidebar.slider("Neutrality Threshold (log difference)", 0.0, 1.0, 0.1, step=0.01)
@@ -281,7 +281,7 @@ if st.button("Predict Sentiment"):
         
         # For Gaussian NB, decide using probabilities; for discrete models, we will recalc later.
         if nb_variant == "Gaussian":
-            if abs(proba[pos_index] - proba[neg_index]) <= neutral_threshold:
+            if abs(proba[pos_index] - proba[neg_index]) < neutral_threshold:
                 overall_sentiment = "Neutral"
             else:
                 overall_sentiment = model.predict(X_new)[0]
@@ -322,19 +322,11 @@ if st.button("Predict Sentiment"):
                 
                 # --- Worked Numerical Calculation for Discrete NB ---
                 st.markdown("### Worked Numerical Calculation (Discrete NB)")
-                # The log prior difference shows the model's inherent bias.
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
-                # The sum of word contributions shows the evidence from the review.
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
                 
-                # Debug outputs for checking values
-                st.write(f"log_prior_diff: {log_prior_diff:.4f}")
-                st.write(f"token_sum: {token_sum:.4f}")
-                st.write(f"overall_log_diff: {overall_log_diff:.4f}")
-                st.write(f"neutral_threshold: {neutral_threshold:.4f}")
-                
-                # Force neutrality if the overall log difference is within (or equal to) the threshold.
+                # Threshold comparison (AMENDED TO USE <= INSTEAD OF <)
                 if abs(overall_log_diff) <= neutral_threshold:
                     overall_log_diff = 0
                     overall_sentiment = "Neutral"
@@ -413,4 +405,3 @@ footer.markdown(
 #**********************************************
 # End of Naive Bayes Demo App
 #**********************************************
-
