@@ -9,13 +9,12 @@ from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
 
 # =============================================================================
-# Custom Tokenizer (using regex, no dependency on NLTK's "punkt")
+# Custom Tokenizer (using regex; avoids dependency on NLTK's "punkt")
 # =============================================================================
 def custom_tokenizer(text):
     """
     Converts text to lowercase, extracts words using a regular expression,
     removes stop words, and applies stemming.
-    This approach avoids using nltk.tokenize.word_tokenize (which requires the "punkt" data).
     """
     # Lowercase the text
     text = text.lower()
@@ -77,14 +76,11 @@ def train_model(nb_variant):
     from sklearn.feature_extraction.text import TfidfVectorizer
     
     df = get_training_data()
-    
-    # Use a TfidfVectorizer with our custom tokenizer.
-    # We disable automatic lowercasing since our tokenizer already lowercases.
+    # Create a TfidfVectorizer that uses our custom tokenizer (no automatic lowercasing)
     vectorizer = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
     X = vectorizer.fit_transform(df['review'])
     y = df['sentiment']
     
-    # Train the chosen Naive Bayes model
     if nb_variant == "Multinomial":
         from sklearn.naive_bayes import MultinomialNB
         model = MultinomialNB()
@@ -95,14 +91,54 @@ def train_model(nb_variant):
         model.fit(X, y)
     elif nb_variant == "Gaussian":
         from sklearn.naive_bayes import GaussianNB
-        # GaussianNB requires a dense array
         model = GaussianNB()
+        # GaussianNB requires a dense array
         model.fit(X.toarray(), y)
     else:
         st.error("Unsupported Naive Bayes variant selected.")
         return None, None
     
     return model, vectorizer
+
+# =============================================================================
+# Function to Compute Token-Level Sentiment Association
+# (Only works for discrete NB models that provide feature_log_prob_)
+# =============================================================================
+def get_token_sentiments(tokens, model, vectorizer):
+    token_sentiments = []
+    classes = model.classes_
+    # Check if we have the expected class labels
+    if "Positive" in classes and "Negative" in classes:
+        pos_index = list(classes).index("Positive")
+        neg_index = list(classes).index("Negative")
+        # Process unique tokens to avoid duplicates
+        unique_tokens = sorted(set(tokens))
+        for token in unique_tokens:
+            if token in vectorizer.vocabulary_:
+                col_index = vectorizer.vocabulary_[token]
+                lp_token_pos = model.feature_log_prob_[pos_index, col_index]
+                lp_token_neg = model.feature_log_prob_[neg_index, col_index]
+                diff = lp_token_pos - lp_token_neg
+                if diff > 0:
+                    assoc = "Positive"
+                elif diff < 0:
+                    assoc = "Negative"
+                else:
+                    assoc = "Neutral"
+                token_sentiments.append({
+                    "Token": token,
+                    "Association": assoc,
+                    "Score": round(diff, 3)
+                })
+            else:
+                token_sentiments.append({
+                    "Token": token,
+                    "Association": "Unknown",
+                    "Score": None
+                })
+        return pd.DataFrame(token_sentiments)
+    else:
+        return pd.DataFrame()
 
 # =============================================================================
 # Streamlit App Layout
@@ -112,8 +148,7 @@ st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
 This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
-In this demo, we use an expanded training dataset and pre‑processing steps (tokenisation, stop word removal, and stemming).  
-Enjoy exploring the results!
+**Note:** Due to a small training dataset, the default review may be classified as negative.
 """)
 
 # -----------------------------
@@ -143,27 +178,35 @@ if st.button("Predict Sentiment"):
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Predict sentiment
+        # Predict overall sentiment.
         prediction = model.predict(X_new)[0]
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {prediction}")
         
-        # Visualise the tokens extracted from the review
-        tokens = custom_tokenizer(user_review)
-        if tokens:
-            token_counts = Counter(tokens)
-            token_df = pd.DataFrame(list(token_counts.items()), columns=["Token", "Frequency"]).sort_values("Frequency", ascending=False)
-            st.subheader("Tokens in Your Review")
-            st.bar_chart(token_df.set_index("Token"))
+        # For discrete NB models, display token-level sentiment associations.
+        if nb_variant in ["Multinomial", "Bernoulli"]:
+            tokens = custom_tokenizer(user_review)
+            token_df = get_token_sentiments(tokens, model, vectorizer)
+            if not token_df.empty:
+                st.subheader("Token-Level Sentiment Association")
+                st.write("""
+                Each token’s score represents the difference between its log probability for the positive class 
+                and the negative class. A positive score indicates a positive association, while a negative 
+                score indicates a negative association.
+                """)
+                st.dataframe(token_df)
+            else:
+                st.write("No token-level sentiment data available.")
         else:
-            st.write("No tokens were extracted from your review.")
+            st.write("Token-level sentiment association is not available for the selected model.")
 
 st.markdown("""
 ---
 ### How Does Naive Bayes Work?
 Naive Bayes calculates the probability that a document (or review) belongs to a given class (e.g. Positive or Negative)  
 by combining the probabilities of each token (word) appearing in documents of that class.  
-Despite the ‘naive’ assumption that each token is independent of the others, the algorithm works remarkably well in practice.  
-This demo illustrates how pre‑processing steps—such as tokenisation, stop word removal, and stemming—prepare the text for classification.
+Despite the ‘naive’ assumption that each token is independent, the algorithm works remarkably well in practice.  
+This demo illustrates how pre‑processing steps — such as tokenisation, stop word removal, and stemming — prepare the text for classification.
 """)
+
 
