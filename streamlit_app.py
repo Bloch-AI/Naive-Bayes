@@ -228,20 +228,18 @@ with st.expander("Learn About Naive Bayes"):
       of emails.
       
     - **How It Works:**  
-      1. **Learning:** The model learns from examples. It counts how often each word appears in positive and negative reviews.
-      2. **Predicting:** When a new review comes in, it checks the words and combines the learned counts to guess if the review is
-         positive or negative.
+      1. **Learning:** The model learns from examples by counting how often each word appears in good and bad reviews.
+      2. **Predicting:** When a new review comes in, it checks the words and combines the counts to guess if the review is good or bad.
       
     - **The 'Naive' Part:**  
-      The model assumes each word works independently. In real language, words often work together (like “not delicious”), but
-      even with this assumption, the algorithm does a great job.
+      The model assumes each word works independently. In real language, words work together (like “not delicious”), but the model still does a great job.
       
     - **Different Versions:**  
-      - **Multinomial NB:** Think of it as a word counter that cares about how many times a word appears.
+      - **Multinomial NB:** Think of it as a word counter that cares about how often words appear.
       - **Bernoulli NB:** Works like a checklist—only cares if a word is there or not.
       - **Gaussian NB:** Used when your data are numbers instead of words.
       
-    This simplicity is why Naive Bayes is used in so many places—from spam filtering to analyzing customer reviews.
+    This simplicity is why Naive Bayes is used in many applications—from spam filtering to analyzing customer reviews.
     """, unsafe_allow_html=True)
 
 # =============================================================================
@@ -249,6 +247,18 @@ with st.expander("Learn About Naive Bayes"):
 # =============================================================================
 st.sidebar.header("Model Settings")
 nb_variant = st.sidebar.selectbox("Choose a Naive Bayes Model", options=["Multinomial", "Bernoulli", "Gaussian"])
+st.sidebar.markdown("""
+**Model Options Explained:**
+
+- **Multinomial NB:**  
+  Counts how often each word appears in the reviews. It’s like keeping score of word frequencies.
+
+- **Bernoulli NB:**  
+  Checks whether a word is present or not, like ticking off items on a checklist.
+
+- **Gaussian NB:**  
+  Works with continuous numbers instead of word counts. It assumes the numbers follow a normal distribution.
+""")
 st.sidebar.markdown("""
 **Neutrality Threshold:**  
 Use this slider to decide when a review is too balanced.  
@@ -400,12 +410,9 @@ footer.markdown(
     }
     </style>
     <div class="footer">
-        <p>© 2024 Bloch AI LTD - All Rights Reserved. <a href="https://www.bloch.ai" style="color: white;">www.bloch.ai</a></p>
+        <p>© 2025 Bloch AI LTD - All Rights Reserved. <a href="https://www.bloch.ai" style="color: white;">www.bloch.ai</a></p>
     </div>
     ''',
     unsafe_allow_html=True
 )
 
-#**********************************************
-# End of Naive Bayes Demo App
-#**********************************************
