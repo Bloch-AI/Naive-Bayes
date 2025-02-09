@@ -392,6 +392,15 @@ if st.button("Predict Sentiment"):
             st.write(f"Difference: {proba[pos_index] - proba[neg_index]:.4f}")
             st.write(f"Threshold: ±{neutral_threshold:.4f}")
 
+
+    # ================================
+    # Article Link Section (at the bottom)
+    # ================================
+    st.markdown("---")
+    st.markdown("### Further Reading")
+    st.markdown(
+        "For a detailed discussion on Naive Bayes, check out my [Medium article](https://blochai.medium.com/the-paradox-of-naive-bayes-when-simple-becomes-sophisticated-5b86acb25696)."
+    )
 # =============================================================================
 # Footer Section
 # =============================================================================
