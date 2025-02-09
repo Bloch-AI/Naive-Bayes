@@ -47,9 +47,8 @@ def custom_tokenizer(text):
     Preprocess the input text by:
     - Converting it to lowercase.
     - Extracting words using a regular expression.
-    - Removing both standard stopwords and domain-specific tokens (e.g. "food", "service").
+    - Removing standard stopwords and domain-specific tokens (e.g. "food", "service").
     - Applying lemmatisation to preserve the natural form of words (e.g. "friendly" remains "friendly").
-    
     Returns a list of processed tokens.
     """
     text = text.lower()
@@ -167,8 +166,8 @@ def train_model(nb_variant):
 # =============================================================================
 def get_token_sentiments(tokens, model, vectoriser):
     """
-    For Multinomial and Bernoulli NB models, calculates the log-probability difference 
-    (Positive minus Negative) for each unique token.
+    For Multinomial and Bernoulli NB models, calculates the log-probability difference
+    for each unique token between the Positive and Negative classes.
     Returns a DataFrame sorted by token contribution.
     """
     token_sentiments = []
@@ -196,8 +195,8 @@ def get_token_sentiments(tokens, model, vectoriser):
 # =============================================================================
 def plot_token_sentiments(token_df):
     """
-    Displays a bar chart of token-level sentiment contributions.
-    Tokens with positive scores are shown in green, and negative scores in red.
+    Creates a bar chart displaying the sentiment contribution of each token.
+    Tokens with positive scores are shown in green, and those with negative scores in red.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
@@ -215,30 +214,22 @@ def plot_token_sentiments(token_df):
 # Theory and Background Section (Expandable)
 # =============================================================================
 with st.expander("Learn About Naive Bayes"):
-    st.markdown("""
-    **Naive Bayes Overview:**
+    st.markdown(r"""
+    **Naive Bayes Explained Simply:**
     
-    Naive Bayes is a probabilistic classifier based on Bayes' Theorem, which is given by:
+    Naive Bayes is a type of classifier that uses probability to decide which category a text belongs to.
+    It is based on Bayes' Theorem, which is written as:
     
     \[
     P(C|X) = \frac{P(X|C) \times P(C)}{P(X)}
     \]
     
-    Where:
-    - **\(P(C|X)\)** is the posterior probability of class \(C\) given features \(X\).
-    - **\(P(X|C)\)** is the likelihood: the probability of observing the features given the class.
-    - **\(P(C)\)** is the prior probability of class \(C\) (how common the class is in the training data).
-    - **\(P(X)\)** is a normalising constant.
+    - **\(P(C|X)\)**: The probability that the review belongs to class \(C\) (e.g. Positive or Negative) given the words \(X\) in the review.
+    - **\(P(X|C)\)**: The likelihood of observing the words \(X\) if the review is of class \(C\).
+    - **\(P(C)\)**: The prior probability of class \(C\) – how common the class is in the training data.
+    - **\(P(X)\)**: A normalising constant that ensures all probabilities sum to 1.
     
-    **Key Points:**
-    - **Prior Probability:** Reflects the baseline frequency of each class in the training data.
-    - **Likelihood:** Indicates how likely the observed tokens are given a class.
-    - **Log Probabilities:** We use the logarithms of probabilities to avoid very small numbers and to transform multiplication into addition.
-    
-    **Model Variants in This Demo:**
-    - **Multinomial NB:** Considers the frequency of tokens.
-    - **Bernoulli NB:** Considers only whether a token is present or not (binary).
-    - **Gaussian NB:** Assumes continuous features; here, it treats TF-IDF scores as continuous.
+    In simple terms, the classifier starts with a baseline belief about each class (the prior), looks at the words in the review (the likelihood), and updates its belief (the posterior). The class with the highest posterior probability is chosen.
     """, unsafe_allow_html=True)
 
 # =============================================================================
@@ -248,49 +239,49 @@ st.sidebar.header("Model Configuration")
 nb_variant = st.sidebar.selectbox("Select Naive Bayes Variant", options=["Multinomial", "Bernoulli", "Gaussian"])
 st.sidebar.markdown("""
 **Neutrality Threshold:**  
-Use the slider below to adjust the threshold for considering a review as neutral.  
-If the difference between the log probabilities for the Positive and Negative classes is less than this value,  
-the review will be classified as **Neutral**. This helps handle borderline cases.
+Use the slider below to set the minimum difference between the log probabilities for the Positive and Negative classes.
+If the difference is less than this threshold, the review is considered **Neutral**.
+This helps to identify borderline cases.
 """)
 neutral_threshold = st.sidebar.slider("Neutrality Threshold (log difference)", 0.0, 1.0, 0.1, step=0.01)
 
 # =============================================================================
-# Main App Functionality
+# Main App Layout and Functionality
 # =============================================================================
 st.title("Naive Bayes Demo App for Sentiment Analysis")
 st.markdown("""
-Enter a restaurant review and choose a Naive Bayes variant to see the prediction,  
-a detailed token-level analysis (for Multinomial and Bernoulli NB), and a worked numerical calculation  
+Enter a restaurant review and choose a Naive Bayes variant (Multinomial, Bernoulli, or Gaussian)
+to see the prediction, detailed token-level analysis (for discrete models), and a worked numerical calculation 
 that explains the overall decision.
 """)
 
 # Train the model
 model, vectoriser = train_model(nb_variant)
 
-# Input for user review
+# Input section for user review
 st.subheader("Enter a Restaurant Review")
 default_review = "delicious food but very slow"
 user_review = st.text_area("Your Review:", default_review)
 
 if st.button("Predict Sentiment"):
-    # Preprocess the review
+    # Preprocess the review text
     tokens = custom_tokenizer(user_review)
     if not tokens:
         st.subheader("Prediction")
         st.write("**Sentiment:** Neutral (Not enough training data)")
         st.markdown("### Result Explanation")
-        st.write("No tokens were obtained after pre-processing. This could be due to the removal of common words. In such cases, the sentiment is shown as Neutral.")
+        st.write("No tokens were obtained after pre-processing. This might be due to common words being removed. In such cases, the review is shown as Neutral.")
     else:
         X_new = vectoriser.transform([user_review])
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Get the probability estimates from the model
+        # Obtain overall class probabilities
         proba = model.predict_proba(X_new)[0]
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
         
-        # Determine overall sentiment based on the neutrality threshold
+        # Decide on overall sentiment based on the neutrality threshold
         if abs(proba[pos_index] - proba[neg_index]) < neutral_threshold:
             overall_sentiment = "Neutral"
         else:
@@ -299,29 +290,29 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {overall_sentiment}")
         
-        # Simplified narrative explanation of the result
+        # Simplified narrative explanation
         st.markdown("### Result Explanation")
         if overall_sentiment == "Positive":
-            st.write("The review is classified as **Positive** because the evidence (from the tokens) favours the positive class.")
+            st.write("The review is classified as **Positive** because the evidence (from the words) favours the positive class.")
         elif overall_sentiment == "Negative":
-            st.write("The review is classified as **Negative** because the evidence (from the tokens) favours the negative class.")
+            st.write("The review is classified as **Negative** because the evidence (from the words) favours the negative class.")
         else:
             st.write("The review is classified as **Neutral** because the difference between the positive and negative evidence is very small.")
         
         # Explain model variant differences
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** Tokens are treated as binary features (present or absent). This means that each token contributes its full effect regardless of how many times it appears.")
+            st.write("**Note for Bernoulli NB:** In this model, words are treated as binary features (present or not), so each word contributes its full effect, regardless of how many times it appears.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** Token frequency is taken into account; tokens that appear more often will have a larger effect on the classification.")
+            st.write("**Note for Multinomial NB:** In this model, the frequency of words is considered; words that appear more often have a larger effect on the classification.")
         
-        # For discrete NB models, show token-level details and a worked calculation.
+        # For discrete NB models, display token-level analysis and a worked numerical calculation.
         if nb_variant in ["Multinomial", "Bernoulli"]:
             token_df = get_token_sentiments(tokens, model, vectoriser)
             if not token_df.empty:
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
-                The table below shows the tokens extracted from your review along with their individual contribution scores.
-                A positive score means the token supports a positive classification, while a negative score means it supports a negative classification.
+                The table below shows the words extracted from your review along with their individual contribution scores.
+                A positive score means the word supports a Positive classification, while a negative score supports a Negative classification.
                 """)
                 html_table = token_df.reset_index(drop=True).to_html(index=False)
                 st.markdown(html_table, unsafe_allow_html=True)
@@ -329,25 +320,25 @@ if st.button("Predict Sentiment"):
                 
                 # --- Worked Numerical Calculation for Discrete NB ---
                 st.markdown("### Worked Numerical Calculation (Discrete NB)")
-                # The log prior difference represents the inherent bias of the training data.
+                # The log prior difference reflects the inherent bias from the training data.
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
-                # The sum of token contributions shows the combined effect of the tokens from the review.
+                # The sum of the word contributions shows the overall evidence from the review.
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
-                # If the overall difference is very small (within the neutrality threshold), we treat it as neutral.
+                # Force neutrality if the overall difference is very small.
                 if abs(overall_log_diff) < neutral_threshold:
                     overall_log_diff = 0
                     overall_sentiment = "Neutral"
                 calc_str = (
                     f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
-                    "**Token Contributions:**\n"
+                    "**Word Contributions:**\n"
                 )
                 for _, row in token_df.iterrows():
                     calc_str += f"- **{row['Token']}**: {row['Score']:.4f}\n"
                 calc_str += (
-                    f"\n**Sum of token contributions:** {token_sum:.4f}\n\n"
+                    f"\n**Sum of word contributions:** {token_sum:.4f}\n\n"
                     f"**Overall log probability difference:** {overall_log_diff:.4f}\n\n"
-                    "This overall difference is the sum of the inherent bias (log prior difference) and the evidence from the tokens.\n"
+                    "This overall difference is the sum of the model's initial bias (log priors) and the evidence from the review.\n"
                 )
                 if overall_log_diff > 0:
                     calc_str += "Because the overall log difference is positive, the review is classified as **Positive**."
@@ -359,11 +350,10 @@ if st.button("Predict Sentiment"):
             else:
                 st.write("No token-level sentiment data available.")
         
-        # For Gaussian NB, show a pie chart and simple overall probability calculation.
+        # For Gaussian NB, display a pie chart and overall probability calculation.
         elif nb_variant == "Gaussian":
             st.subheader("Gaussian NB: Class Probability Distribution")
             st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
-            # Dynamically assign colours so that Positive is green and Negative is red.
             colors = [("green" if cls == "Positive" else "red" if cls == "Negative" else "gray") for cls in model.classes_]
             fig, ax = plt.subplots()
             ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=colors)
