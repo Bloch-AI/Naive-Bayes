@@ -20,7 +20,7 @@ def custom_tokenizer(text):
     """
     Converts text to lowercase, extracts words using a regular expression,
     removes both standard stop words and domain-specific tokens, and applies lemmatization.
-    This preserves words like "friendly" instead of converting them to "friend".
+    This preserves words like "friendly" rather than reducing them to "friend".
     """
     text = text.lower()
     # Extract words (sequences of alphanumeric characters)
@@ -44,7 +44,7 @@ def custom_tokenizer(text):
     # Initialize the lemmatizer
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = []
-    # For a better lemmatization, try verb then noun
+    # For better lemmatization, try as verb then noun
     for token in tokens:
         lemma = lemmatizer.lemmatize(token, pos='v')
         if lemma == token:
@@ -239,6 +239,12 @@ if st.button("Predict Sentiment"):
             st.write("The review is classified as **Negative**. This might be due to some tokens having negative associations. Please review the token-level analysis below for more details.")
         else:
             st.write("The review is classified as **Neutral** because there is insufficient sentiment information from the extracted tokens.")
+        
+        # Add differentiator narrative based on the chosen algorithm.
+        if nb_variant == "Bernoulli":
+            st.write("**Note for Bernoulli NB:** In this model, tokens are treated as binary features (present or absent), so the token-level scores reflect the log-probability differences based solely on token presence. This differs from Multinomial NB, which also factors in token frequency.")
+        elif nb_variant == "Multinomial":
+            st.write("**Note for Multinomial NB:** In this model, token frequency is taken into account. Tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
         
         # For discrete NB models, display token-level sentiment associations.
         if nb_variant in ["Multinomial", "Bernoulli"]:
