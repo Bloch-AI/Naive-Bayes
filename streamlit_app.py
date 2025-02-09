@@ -224,12 +224,13 @@ with st.expander("Learn About Naive Bayes"):
       simply calculates which outcome is most likely based on the words in a review.
       
     - **Real-World Success:**  
-      For example, Gmail’s early spam filter used Naive Bayes. Its simple approach made it fast and effective, even with millions
+      For example, Google Gmails early spam filter used Naive Bayes. Its simple approach made it fast and effective, even with millions
       of emails.
       
     - **How It Works:**  
       1. **Learning:** The model learns from examples by counting how often each word appears in good and bad reviews.
       2. **Predicting:** When a new review comes in, it checks the words and combines the counts to guess if the review is good or bad.
+
       
     - **The 'Naive' Part:**  
       The model assumes each word works independently. In real language, words work together (like “not delicious”), but the model still does a great job.
@@ -251,7 +252,7 @@ st.sidebar.markdown("""
 **Model Options Explained:**
 
 - **Multinomial NB:**  
-  Counts how often each word appears in the reviews. It’s like keeping score of word frequencies.
+  Counts how often each word appears in the reviews. It is like keeping score of word frequencies.
 
 - **Bernoulli NB:**  
   Checks whether a word is present or not, like ticking off items on a checklist.
