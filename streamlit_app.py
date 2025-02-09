@@ -200,12 +200,12 @@ def get_token_sentiments(tokens, model, vectorizer):
         return pd.DataFrame()
 
 # =============================================================================
-# Visualization Function for Token-Level Sentiment
+# Visualization Function for Token-Level Sentiment Association
 # =============================================================================
 def plot_token_sentiments(token_df):
     """
     Creates a bar chart of token-level sentiment associations.
-    Tokens with positive scores are shown in green, negative scores in red.
+    Tokens with positive scores are shown in green; negative in red.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
@@ -259,6 +259,7 @@ if st.button("Predict Sentiment"):
         proba = model.predict_proba(X_new)[0]
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
+        # Use threshold: if the probability difference is less than 0.1, classify as Neutral.
         if abs(proba[pos_index] - proba[neg_index]) < 0.1:
             overall_sentiment = "Neutral"
         else:
@@ -267,7 +268,7 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {overall_sentiment}")
         
-        # Narrative explanation of the result
+        # Narrative explanation for the result
         st.markdown("### Result Explanation")
         if overall_sentiment == "Positive":
             st.write("The review is classified as **Positive** because the tokens extracted (e.g. 'love', 'delicious', 'friendly') show strong positive associations in the model, contributing to a higher probability for the positive class.")
@@ -276,13 +277,13 @@ if st.button("Predict Sentiment"):
         else:
             st.write("The review is classified as **Neutral** because the difference between positive and negative probabilities is small, indicating insufficient evidence for a strong classification.")
         
-        # Provide algorithm-specific explanation
+        # Algorithm-specific explanation
         if nb_variant == "Bernoulli":
             st.write("**Note for Bernoulli NB:** Tokens are treated as binary features (present/absent), so token-level scores reflect log-probability differences based solely on token presence.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** Token frequency is taken into account, so tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
+            st.write("**Note for Multinomial NB:** Token frequency is taken into account; tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
         
-        # For discrete NB models, display token-level sentiment details and a worked calculation.
+        # For discrete NB models, display token-level sentiment analysis and a worked calculation.
         if nb_variant in ["Multinomial", "Bernoulli"]:
             token_df = get_token_sentiments(tokens, model, vectorizer)
             if not token_df.empty:
@@ -291,7 +292,6 @@ if st.button("Predict Sentiment"):
                 The table below shows the tokens extracted from your review along with their sentiment association scores.
                 A positive score indicates a positive association, while a negative score indicates a negative association.
                 """)
-                # Render the DataFrame as HTML without the index
                 html_table = token_df.reset_index(drop=True).to_html(index=False)
                 st.markdown(html_table, unsafe_allow_html=True)
                 plot_token_sentiments(token_df)
@@ -301,6 +301,10 @@ if st.button("Predict Sentiment"):
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
+                # Force neutrality if the overall difference is close to zero (threshold 0.1)
+                if abs(overall_log_diff) < 0.1:
+                    overall_log_diff = 0
+                    overall_sentiment = "Neutral"
                 calc_str = (
                     f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
                     "**Token Contributions:**\n"
@@ -316,16 +320,16 @@ if st.button("Predict Sentiment"):
                 elif overall_log_diff < 0:
                     calc_str += "Since the overall log probability difference is negative, the review is classified as **Negative**."
                 else:
-                    calc_str += "Since the overall log probability difference is 0, the review is classified as **Neutral**."
+                    calc_str += "Since the overall log probability difference is 0 (or nearly 0), the review is classified as **Neutral**."
                 st.markdown(calc_str)
             else:
                 st.write("No token-level sentiment data available.")
         
-        # For Gaussian NB, display class probability distribution and a worked calculation.
+        # For Gaussian NB, display a pie chart and overall probability calculation.
         elif nb_variant == "Gaussian":
             st.subheader("Gaussian NB: Class Probability Distribution")
             st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
-            # Map classes to colors: Positive=green, Negative=red (others=gray)
+            # Dynamically assign colors: Positive=green, Negative=red.
             colors = [("green" if cls == "Positive" else "red" if cls == "Negative" else "gray") for cls in model.classes_]
             fig, ax = plt.subplots()
             ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=colors)
