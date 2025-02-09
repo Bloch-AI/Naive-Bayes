@@ -4,19 +4,21 @@ import re
 from collections import Counter
 import matplotlib.pyplot as plt
 
-# Import NLTK components (only for stopwords and stemming)
+# Import NLTK components for stopwords and lemmatization
 from nltk.corpus import stopwords
-from nltk.stem import SnowballStemmer
+from nltk.stem import WordNetLemmatizer
 
 # =============================================================================
-# Custom Tokenizer (using regex; avoids dependency on NLTK's "punkt")
+# Custom Tokenizer (using regex and lemmatization)
 # =============================================================================
 def custom_tokenizer(text):
     """
     Converts text to lowercase, extracts words using a regular expression,
-    removes both standard stop words and domain-specific tokens, and applies stemming.
+    removes both standard stop words and domain-specific tokens, and applies lemmatization.
+    This preserves words like "friendly" instead of converting them to "friend".
     """
     text = text.lower()
+    # Extract words (sequences of alphanumeric characters)
     tokens = re.findall(r'\b\w+\b', text)
     
     # Load NLTK stopwords (if available)
@@ -25,20 +27,26 @@ def custom_tokenizer(text):
     except LookupError:
         nltk_stopwords = set()
     
-    # Domain-specific tokens to remove
+    # Domain-specific tokens to remove (common words that add little discriminative value)
     domain_stopwords = {"food", "service", "restaurant", "meal", "dining"}
     
-    # Combine both sets of stopwords
+    # Combine standard and domain-specific stopwords
     all_stopwords = nltk_stopwords.union(domain_stopwords)
     
     # Filter out tokens that are in the combined stopword list
     tokens = [token for token in tokens if token not in all_stopwords]
     
-    # Apply stemming using SnowballStemmer
-    stemmer = SnowballStemmer("english")
-    tokens = [stemmer.stem(token) for token in tokens]
+    # Initialize the lemmatizer
+    lemmatizer = WordNetLemmatizer()
+    lemmatized_tokens = []
+    # For a better lemmatisation, try verb then noun
+    for token in tokens:
+        lemma = lemmatizer.lemmatize(token, pos='v')
+        if lemma == token:
+            lemma = lemmatizer.lemmatize(token, pos='n')
+        lemmatized_tokens.append(lemma)
     
-    return tokens
+    return lemmatized_tokens
 
 # =============================================================================
 # Expanded Training Data (UK English)
@@ -103,7 +111,7 @@ def train_model(nb_variant):
     from sklearn.feature_extraction.text import TfidfVectorizer
     
     df = get_training_data()
-    # Create a TfidfVectorizer that uses our custom tokenizer (no automatic lowercasing)
+    # Create a TfidfVectorizer that uses our custom tokenizer (which handles lowercasing)
     vectorizer = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
     X = vectorizer.fit_transform(df['review'])
     y = df['sentiment']
@@ -173,12 +181,13 @@ def plot_token_sentiments(token_df):
 # =============================================================================
 # Streamlit App Layout
 # =============================================================================
-st.title("Naive Bayes Simulator for Restaurant Reviews")
+st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
 
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
 This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
-With an expanded training dataset and refined tokenisation (removing common domain words), the classifier should now provide more accurate predictions.
+With an expanded training dataset and refined tokenisation (using lemmatization and removing common domain words),  
+the classifier should now provide more accurate predictions.
 """)
 
 # -----------------------------
@@ -200,11 +209,13 @@ default_review = "I loved the delicious food and friendly service."
 user_review = st.text_area("Your Review:", default_review)
 
 if st.button("Predict Sentiment"):
-    # First, obtain tokens using the custom tokenizer.
+    # Tokenise the review first.
     tokens = custom_tokenizer(user_review)
     if not tokens:
         st.subheader("Prediction")
         st.write("**Sentiment:** Neutral (Not enough training data)")
+        st.markdown("### Result Explanation")
+        st.write("The review did not yield any tokens after pre-processing. This may be due to the removal of common words. In such cases, there isn’t enough information for the classifier, so the sentiment is treated as Neutral.")
     else:
         X_new = vectorizer.transform([user_review])
         if nb_variant == "Gaussian":
@@ -215,14 +226,24 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {prediction}")
         
+        # Narrative explanation for the result.
+        st.markdown("### Result Explanation")
+        if prediction == "Positive":
+            st.write("The review is classified as **Positive** because the tokens extracted (such as 'love', 'delicious', and 'friendly') show strong positive associations in the model. These tokens contribute to a higher probability for the positive class.")
+        elif prediction == "Negative":
+            st.write("The review is classified as **Negative**. This might be due to some tokens having negative associations. Please review the token-level analysis below for more details.")
+        else:
+            st.write("The review is classified as **Neutral** because there is insufficient sentiment information from the extracted tokens.")
+        
         # For discrete NB models, display token-level sentiment associations.
         if nb_variant in ["Multinomial", "Bernoulli"]:
             token_df = get_token_sentiments(tokens, model, vectorizer)
             if not token_df.empty:
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
-                The following table shows the tokens found in your review along with their sentiment association scores.
-                A positive score (green) indicates a positive association, while a negative score (red) indicates a negative association.
+                The table below shows the tokens found in your review along with their sentiment association scores.
+                A positive score (highlighted in green) indicates a positive association, while a negative score (highlighted in red)
+                indicates a negative association.
                 """)
                 st.dataframe(token_df)
                 plot_token_sentiments(token_df)
@@ -237,5 +258,5 @@ st.markdown("""
 Naive Bayes calculates the probability that a document (or review) belongs to a given class (e.g. Positive or Negative)  
 by combining the probabilities of each token (word) appearing in documents of that class.  
 Despite the ‘naive’ assumption that each token is independent, the algorithm works remarkably well in practice.  
-This demo illustrates how pre‑processing steps — such as tokenisation, stop word removal, and stemming — prepare the text for classification.
+This demo illustrates how pre‑processing steps — such as tokenisation, stop word removal, and lemmatization — prepare the text for classification.
 """)
