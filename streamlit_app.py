@@ -14,17 +14,27 @@ from nltk.stem import SnowballStemmer
 def custom_tokenizer(text):
     """
     Converts text to lowercase, extracts words using a regular expression,
-    removes stop words, and applies stemming.
+    removes both standard stop words and domain-specific tokens, and applies stemming.
     """
     text = text.lower()
     tokens = re.findall(r'\b\w+\b', text)
     
+    # Load NLTK stopwords (if available)
     try:
-        stop_words = set(stopwords.words('english'))
+        nltk_stopwords = set(stopwords.words('english'))
     except LookupError:
-        stop_words = set()
+        nltk_stopwords = set()
     
-    tokens = [token for token in tokens if token not in stop_words]
+    # Domain-specific tokens to remove
+    domain_stopwords = {"food", "service", "restaurant", "meal", "dining"}
+    
+    # Combine both sets of stopwords
+    all_stopwords = nltk_stopwords.union(domain_stopwords)
+    
+    # Filter out tokens that are in the combined stopword list
+    tokens = [token for token in tokens if token not in all_stopwords]
+    
+    # Apply stemming using SnowballStemmer
     stemmer = SnowballStemmer("english")
     tokens = [stemmer.stem(token) for token in tokens]
     
@@ -93,6 +103,7 @@ def train_model(nb_variant):
     from sklearn.feature_extraction.text import TfidfVectorizer
     
     df = get_training_data()
+    # Create a TfidfVectorizer that uses our custom tokenizer (no automatic lowercasing)
     vectorizer = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
     X = vectorizer.fit_transform(df['review'])
     y = df['sentiment']
@@ -108,6 +119,7 @@ def train_model(nb_variant):
     elif nb_variant == "Gaussian":
         from sklearn.naive_bayes import GaussianNB
         model = GaussianNB()
+        # GaussianNB requires a dense array
         model.fit(X.toarray(), y)
     else:
         st.error("Unsupported Naive Bayes variant selected.")
@@ -122,6 +134,7 @@ def train_model(nb_variant):
 def get_token_sentiments(tokens, model, vectorizer):
     token_sentiments = []
     classes = model.classes_
+    # Only compute if both positive and negative classes are present
     if "Positive" in classes and "Negative" in classes:
         pos_index = list(classes).index("Positive")
         neg_index = list(classes).index("Negative")
@@ -147,7 +160,7 @@ def plot_token_sentiments(token_df):
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
     scores = token_df["Score"]
-    # Assign colors: green for positive scores, red for negative, gray for 0.
+    # Green for positive scores, red for negative
     colors = ['green' if score > 0 else 'red' if score < 0 else 'gray' for score in scores]
     ax.bar(tokens, scores, color=colors)
     ax.axhline(0, color='black', linewidth=0.8)
@@ -165,7 +178,7 @@ st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
 This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
-With an expanded training dataset, the classifier should now provide more accurate predictions.
+With an expanded training dataset and refined tokenisation (removing common domain words), the classifier should now provide more accurate predictions.
 """)
 
 # -----------------------------
@@ -187,8 +200,11 @@ default_review = "I loved the delicious food and friendly service."
 user_review = st.text_area("Your Review:", default_review)
 
 if st.button("Predict Sentiment"):
-    if not user_review:
-        st.error("Please enter a review to analyse.")
+    # First, obtain tokens using the custom tokenizer.
+    tokens = custom_tokenizer(user_review)
+    if not tokens:
+        st.subheader("Prediction")
+        st.write("**Sentiment:** Neutral (Not enough training data)")
     else:
         X_new = vectorizer.transform([user_review])
         if nb_variant == "Gaussian":
@@ -201,13 +217,12 @@ if st.button("Predict Sentiment"):
         
         # For discrete NB models, display token-level sentiment associations.
         if nb_variant in ["Multinomial", "Bernoulli"]:
-            tokens = custom_tokenizer(user_review)
             token_df = get_token_sentiments(tokens, model, vectorizer)
             if not token_df.empty:
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
-                For each token, the score is the difference between its log probability for the positive class and the negative class.
-                A positive score indicates a positive association (green), while a negative score indicates a negative association (red).
+                For each token, the score is the difference between its log probability for the positive and negative classes.
+                Green indicates a positive association; red indicates a negative association.
                 """)
                 plot_token_sentiments(token_df)
             else:
