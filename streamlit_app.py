@@ -227,8 +227,10 @@ if st.button("Predict Sentiment"):
         
         # Obtain probability estimates.
         proba = model.predict_proba(X_new)[0]
+        # Determine indices based on model.classes_ (which is usually sorted alphabetically)
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
+        
         # If the probability difference is less than 0.1, consider the result Neutral.
         if abs(proba[pos_index] - proba[neg_index]) < 0.1:
             overall_sentiment = "Neutral"
@@ -294,8 +296,10 @@ if st.button("Predict Sentiment"):
             # --- For Gaussian NB, display a pie chart and numerical calculation based on overall probabilities ---
             st.subheader("Gaussian NB: Class Probability Distribution")
             st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
+            # Create dynamic colors: assign green for Positive, red for Negative.
+            colors = [("green" if cls == "Positive" else "red" if cls == "Negative" else "gray") for cls in model.classes_]
             fig, ax = plt.subplots()
-            ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=["green", "red"])
+            ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=colors)
             ax.set_title("Class Probability Distribution")
             st.pyplot(fig)
             
