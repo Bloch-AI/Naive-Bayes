@@ -1,53 +1,44 @@
-import os
-import nltk
-
-# Set up a local directory for NLTK data.
-nltk_data_dir = os.path.join(os.getcwd(), 'nltk_data')
-if not os.path.exists(nltk_data_dir):
-    os.mkdir(nltk_data_dir)
-
-# Ensure Python knows to look in our local directory.
-os.environ["NLTK_DATA"] = nltk_data_dir
-nltk.data.path.append(nltk_data_dir)
-
-# Force download of the required NLTK resources unconditionally.
-nltk.download('punkt', download_dir=nltk_data_dir, quiet=True)
-nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
-
 import streamlit as st
 import pandas as pd
-import string
+import re
 from collections import Counter
 import matplotlib.pyplot as plt
 
-from nltk.tokenize import word_tokenize
+# Import NLTK components (only for stopwords and stemming)
 from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
 
 # =============================================================================
-# Custom Pre-processing Functions (Tokenisation, Stop word Removal, Stemming)
+# Custom Tokenizer (using regex, no dependency on NLTK's "punkt")
 # =============================================================================
 def custom_tokenizer(text):
     """
-    Convert text to lowercase, remove punctuation, tokenise, remove stop words,
-    and apply stemming using a SnowballStemmer (for UK English, we use the English stemmer).
+    Converts text to lowercase, extracts words using a regular expression,
+    removes stop words, and applies stemming.
+    This approach avoids using nltk.tokenize.word_tokenize (which requires the "punkt" data).
     """
-    # Lowercase the text (UK English convention)
+    # Lowercase the text
     text = text.lower()
-    # Remove punctuation
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    # Tokenise the text
-    tokens = word_tokenize(text)
-    # Remove stop words (using NLTK's English stopwords)
-    stop_words = set(stopwords.words('english'))
-    tokens = [word for word in tokens if word not in stop_words]
-    # Apply stemming (using SnowballStemmer for English)
+    # Extract words using regex (matches sequences of word characters)
+    tokens = re.findall(r'\b\w+\b', text)
+    
+    # Load stopwords if available; otherwise use an empty set
+    try:
+        stop_words = set(stopwords.words('english'))
+    except LookupError:
+        stop_words = set()
+    
+    # Remove stopwords
+    tokens = [token for token in tokens if token not in stop_words]
+    
+    # Apply stemming using SnowballStemmer
     stemmer = SnowballStemmer("english")
-    tokens = [stemmer.stem(word) for word in tokens]
+    tokens = [stemmer.stem(token) for token in tokens]
+    
     return tokens
 
 # =============================================================================
-# Training Data (Extended Sample Data in UK English)
+# Sample Training Data (UK English)
 # =============================================================================
 def get_training_data():
     data = {
@@ -79,23 +70,20 @@ def get_training_data():
     return pd.DataFrame(data)
 
 # =============================================================================
-# Train Model with Caching
+# Train Model (with caching)
 # =============================================================================
 @st.cache_resource
 def train_model(nb_variant):
-    """
-    Trains a Naive Bayes classifier using the chosen variant.  
-    The TfidfVectorizer utilises a custom tokenizer that implements our pre-processing steps.
-    """
-    df = get_training_data()
     from sklearn.feature_extraction.text import TfidfVectorizer
-
-    # Create a TF‑IDF vectoriser with our custom tokenizer.
-    # We disable automatic lowercasing since our custom_tokenizer already does that.
+    
+    df = get_training_data()
+    
+    # Use a TfidfVectorizer with our custom tokenizer.
+    # We disable automatic lowercasing since our tokenizer already lowercases.
     vectorizer = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
     X = vectorizer.fit_transform(df['review'])
     y = df['sentiment']
-
+    
     # Train the chosen Naive Bayes model
     if nb_variant == "Multinomial":
         from sklearn.naive_bayes import MultinomialNB
@@ -113,13 +101,14 @@ def train_model(nb_variant):
     else:
         st.error("Unsupported Naive Bayes variant selected.")
         return None, None
-
+    
     return model, vectorizer
 
 # =============================================================================
 # Streamlit App Layout
 # =============================================================================
-st.title("Naive Bayes Simulator for Restaurant Reviews")
+st.title("Naive Bayes Simulator for Restaurant Reviews (UK English)")
+
 st.markdown("""
 Naive Bayes is a simple yet remarkably effective machine learning algorithm.  
 This simulator demonstrates how a Naive Bayes classifier predicts the sentiment of a restaurant review.  
@@ -135,7 +124,7 @@ nb_variant = st.sidebar.selectbox("Select Naive Bayes Variant", options=["Multin
 show_preprocessing = st.sidebar.checkbox("Show Data Pre-processing Visualisations", value=True)
 
 # -----------------------------
-# Train Model
+# Train the Model
 # -----------------------------
 model, vectorizer = train_model(nb_variant)
 
@@ -146,7 +135,7 @@ if show_preprocessing:
     st.subheader("Data Pre-processing Visualisation")
     df = get_training_data()
     
-    # Sample review to demonstrate processing steps
+    # Allow the user to enter a sample review to visualise pre‑processing
     sample_review = st.text_area(
         "Enter a sample review to view the pre‑processing steps:",
         "The restaurant had an exceptional ambience, and the flavours were outstanding!"
@@ -159,7 +148,7 @@ if show_preprocessing:
     st.markdown("**Tokenised & Stemmed Version:**")
     st.write(tokens)
     
-    # Compute the frequency distribution of tokens in the entire training dataset
+    # Compute frequency distribution of tokens in the training data
     all_tokens = []
     for review in df['review']:
         all_tokens.extend(custom_tokenizer(review))
@@ -190,7 +179,7 @@ if st.button("Predict Sentiment"):
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Predict sentiment and class probabilities.
+        # Predict sentiment and display class probabilities.
         prediction = model.predict(X_new)[0]
         try:
             prediction_proba = model.predict_proba(X_new)[0]
