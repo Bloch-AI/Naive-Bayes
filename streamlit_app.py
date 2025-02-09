@@ -226,23 +226,31 @@ if st.button("Predict Sentiment"):
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Predict overall sentiment.
-        prediction = model.predict(X_new)[0]
+        # Obtain probability estimates.
+        proba = model.predict_proba(X_new)[0]
+        pos_index = list(model.classes_).index("Positive")
+        neg_index = list(model.classes_).index("Negative")
+        # If the probability difference is less than 0.1, consider the result Neutral.
+        if abs(proba[pos_index] - proba[neg_index]) < 0.1:
+            overall_sentiment = "Neutral"
+        else:
+            overall_sentiment = model.predict(X_new)[0]
+        
         st.subheader("Prediction")
-        st.write(f"**Sentiment:** {prediction}")
+        st.write(f"**Sentiment:** {overall_sentiment}")
         
         # Narrative explanation for the result.
         st.markdown("### Result Explanation")
-        if prediction == "Positive":
+        if overall_sentiment == "Positive":
             st.write("The review is classified as **Positive** because the tokens extracted (such as 'love', 'delicious', and 'friendly') show strong positive associations in the model. These tokens contribute to a higher probability for the positive class.")
-        elif prediction == "Negative":
-            st.write("The review is classified as **Negative**. This might be due to some tokens having negative associations. Please review the token-level analysis below for more details.")
+        elif overall_sentiment == "Negative":
+            st.write("The review is classified as **Negative** because some tokens have strong negative associations. Please review the token-level analysis below for more details.")
         else:
-            st.write("The review is classified as **Neutral** because there is insufficient sentiment information from the extracted tokens.")
+            st.write("The review is classified as **Neutral** because the difference between positive and negative probabilities is small, indicating insufficient evidence to strongly classify the review as positive or negative.")
         
-        # Add differentiator narrative based on the chosen algorithm.
+        # Add algorithm-specific narrative.
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** In this model, tokens are treated as binary features (present or absent), so the token-level scores reflect the log-probability differences based solely on token presence. This differs from Multinomial NB, which also factors in token frequency.")
+            st.write("**Note for Bernoulli NB:** In this model, tokens are treated as binary features (present or absent), so the token-level scores reflect the log-probability differences based solely on token presence. This differs from Multinomial NB, which also considers token frequency.")
         elif nb_variant == "Multinomial":
             st.write("**Note for Multinomial NB:** In this model, token frequency is taken into account. Tokens that appear more often in positive reviews contribute more strongly to a positive classification.")
         
@@ -256,7 +264,8 @@ if st.button("Predict Sentiment"):
                 A positive score (highlighted in green) indicates a positive association, while a negative score (highlighted in red)
                 indicates a negative association.
                 """)
-                st.dataframe(token_df)
+                # Reset the index to remove default row numbers.
+                st.dataframe(token_df.reset_index(drop=True))
                 plot_token_sentiments(token_df)
             else:
                 st.write("No token-level sentiment data available.")
