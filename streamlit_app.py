@@ -261,8 +261,7 @@ if st.button("Predict Sentiment"):
                 st.subheader("Token-Level Sentiment Association")
                 st.write("""
                 The table below shows the tokens found in your review along with their sentiment association scores.
-                A positive score (highlighted in green) indicates a positive association, while a negative score (highlighted in red)
-                indicates a negative association.
+                A positive score indicates a positive association, while a negative score indicates a negative association.
                 """)
                 html_table = token_df.reset_index(drop=True).to_html(index=False)
                 st.markdown(html_table, unsafe_allow_html=True)
@@ -274,18 +273,21 @@ if st.button("Predict Sentiment"):
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
-                st.write(f"Log prior difference (Positive - Negative): {log_prior_diff:.4f}")
-                st.write("Token contributions:")
+                
+                calc_str = f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
+                calc_str += "**Token Contributions:**\n"
                 for _, row in token_df.iterrows():
-                    st.write(f"  Token: {row['Token']}, Contribution: {row['Score']:.4f}")
-                st.write(f"Sum of token contributions: {token_sum:.4f}")
-                st.write(f"Overall log probability difference: {overall_log_diff:.4f}")
+                    calc_str += f"- **{row['Token']}**: {row['Score']:.4f}\n"
+                calc_str += f"\n**Sum of token contributions:** {token_sum:.4f}\n\n"
+                calc_str += f"**Overall log probability difference:** {overall_log_diff:.4f}\n\n"
                 if overall_log_diff > 0:
-                    st.write("Since the overall log probability difference is positive, the review is classified as **Positive**.")
+                    calc_str += "Since the overall log probability difference is positive, the review is classified as **Positive**."
                 elif overall_log_diff < 0:
-                    st.write("Since the overall log probability difference is negative, the review is classified as **Negative**.")
+                    calc_str += "Since the overall log probability difference is negative, the review is classified as **Negative**."
                 else:
-                    st.write("Since the overall log probability difference is 0, the review is classified as **Neutral**.")
+                    calc_str += "Since the overall log probability difference is 0, the review is classified as **Neutral**."
+                
+                st.markdown(calc_str)
             else:
                 st.write("No token-level sentiment data available.")
         else:
@@ -299,4 +301,3 @@ by combining the probabilities of each token (word) appearing in documents of th
 Despite the ‘naive’ assumption that each token is independent, the algorithm works remarkably well in practice.  
 This demo illustrates how pre‑processing steps — such as tokenisation, stop word removal, and lemmatization — prepare the text for classification.
 """)
-
