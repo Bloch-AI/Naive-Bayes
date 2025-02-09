@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import re
-from collections import Counter
 import matplotlib.pyplot as plt
 import nltk
 
@@ -242,7 +241,7 @@ if st.button("Predict Sentiment"):
         # Narrative explanation for the result.
         st.markdown("### Result Explanation")
         if overall_sentiment == "Positive":
-            st.write("The review is classified as **Positive** because the tokens extracted (such as 'love', 'delicious', and 'friendly') show strong positive associations in the model. These tokens contribute to a higher probability for the positive class.")
+            st.write("The review is classified as **Positive** because the tokens extracted (such as 'love', 'delicious', and 'friendly') show strong positive associations in the model, contributing to a higher probability for the positive class.")
         elif overall_sentiment == "Negative":
             st.write("The review is classified as **Negative** because some tokens have strong negative associations. Please review the token-level analysis below for more details.")
         else:
@@ -267,29 +266,50 @@ if st.button("Predict Sentiment"):
                 st.markdown(html_table, unsafe_allow_html=True)
                 plot_token_sentiments(token_df)
                 
-                # --- Worked Numerical Calculation ---
-                st.markdown("### Worked Numerical Calculation")
-                # Get the log prior difference from the model.
+                # --- Worked Numerical Calculation for discrete NB ---
+                st.markdown("### Worked Numerical Calculation (Discrete NB)")
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
-                
-                calc_str = f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
-                calc_str += "**Token Contributions:**\n"
+                calc_str = (
+                    f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
+                    "**Token Contributions:**\n"
+                )
                 for _, row in token_df.iterrows():
                     calc_str += f"- **{row['Token']}**: {row['Score']:.4f}\n"
-                calc_str += f"\n**Sum of token contributions:** {token_sum:.4f}\n\n"
-                calc_str += f"**Overall log probability difference:** {overall_log_diff:.4f}\n\n"
+                calc_str += (
+                    f"\n**Sum of token contributions:** {token_sum:.4f}\n\n"
+                    f"**Overall log probability difference:** {overall_log_diff:.4f}\n\n"
+                )
                 if overall_log_diff > 0:
                     calc_str += "Since the overall log probability difference is positive, the review is classified as **Positive**."
                 elif overall_log_diff < 0:
                     calc_str += "Since the overall log probability difference is negative, the review is classified as **Negative**."
                 else:
                     calc_str += "Since the overall log probability difference is 0, the review is classified as **Neutral**."
-                
                 st.markdown(calc_str)
             else:
                 st.write("No token-level sentiment data available.")
+        elif nb_variant == "Gaussian":
+            # --- For Gaussian NB, display a pie chart and numerical calculation based on overall probabilities ---
+            st.subheader("Gaussian NB: Class Probability Distribution")
+            st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
+            fig, ax = plt.subplots()
+            ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', startangle=90, colors=["green", "red"])
+            ax.set_title("Class Probability Distribution")
+            st.pyplot(fig)
+            
+            st.markdown("### Worked Numerical Calculation (Gaussian NB)")
+            st.write(f"**Probability for Positive:** {proba[pos_index]:.4f}")
+            st.write(f"**Probability for Negative:** {proba[neg_index]:.4f}")
+            diff = proba[pos_index] - proba[neg_index]
+            st.write(f"**Difference (Positive - Negative):** {diff:.4f}")
+            if diff > 0:
+                st.write("Since the difference is positive, the review is classified as **Positive**.")
+            elif diff < 0:
+                st.write("Since the difference is negative, the review is classified as **Negative**.")
+            else:
+                st.write("Since the difference is 0, the review is classified as **Neutral**.")
         else:
             st.write("Token-level sentiment association is not available for the selected model.")
 
