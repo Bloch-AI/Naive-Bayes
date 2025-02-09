@@ -264,8 +264,9 @@ if st.button("Predict Sentiment"):
                 A positive score (highlighted in green) indicates a positive association, while a negative score (highlighted in red)
                 indicates a negative association.
                 """)
-                # Use st.table with styling to hide the index.
-                st.table(token_df.reset_index(drop=True).style.hide_index())
+                # Convert the DataFrame to HTML without an index and display it.
+                html_table = token_df.reset_index(drop=True).to_html(index=False)
+                st.markdown(html_table, unsafe_allow_html=True)
                 plot_token_sentiments(token_df)
             else:
                 st.write("No token-level sentiment data available.")
