@@ -1,9 +1,22 @@
+import os
+import nltk
+
+# Set up NLTK data directory and download required resources if necessary.
+nltk_data_dir = os.path.join(os.getcwd(), 'nltk_data')
+if not os.path.exists(nltk_data_dir):
+    os.mkdir(nltk_data_dir)
+nltk.data.path.append(nltk_data_dir)
+for resource, path in [('punkt', 'tokenizers/punkt'), ('stopwords', 'corpora/stopwords')]:
+    try:
+        nltk.data.find(path)
+    except LookupError:
+        nltk.download(resource, download_dir=nltk_data_dir)
+
 import streamlit as st
 import pandas as pd
 import string
 from collections import Counter
 import matplotlib.pyplot as plt
-import nltk
 
 # Download NLTK resources (only needed on first run)
 nltk.download('punkt')
