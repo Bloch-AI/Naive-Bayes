@@ -20,10 +20,13 @@
 # 4. Displaying visualisations and a worked numerical calculation to explain the model's decision.
 #
 # For discrete NB models (Multinomial and Bernoulli), the app calculates token-level
-# contributions and sums these with the model's log priors. For Gaussian NB, a pie chart
-# of class probabilities is displayed alongside a simple overall probability calculation.
+# contributions and sums these with the model's log priors. This sum (the overall log probability
+# difference) is used to decide the final sentiment. If the sum is very small (within a user-defined threshold),
+# the result is forced to Neutral.
 #
-# An interactive slider allows the user to adjust the "Neutrality Threshold" – if the difference
+# For Gaussian NB, a pie chart of class probabilities is displayed alongside a simple calculation.
+#
+# An interactive slider lets the user adjust the "Neutrality Threshold" – if the difference
 # between the Positive and Negative scores is below this value, the review is shown as Neutral.
 #**********************************************
 
@@ -128,9 +131,8 @@ def get_training_data():
 @st.cache_resource
 def train_model(nb_variant):
     """
-    Trains a Naive Bayes classifier using a TfidfVectoriser (with our custom_tokenizer)
-    on a predefined set of reviews. The variant (Multinomial, Bernoulli, or Gaussian)
-    determines how the tokens are used.
+    Trains a Naive Bayes classifier based on the selected variant.
+    Uses a TfidfVectoriser with the custom_tokenizer on the predefined dataset.
     Returns the trained model and the vectoriser.
     """
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -190,7 +192,7 @@ def get_token_sentiments(tokens, model, vectoriser):
 def plot_token_sentiments(token_df):
     """
     Displays a bar chart of token-level sentiment associations.
-    Tokens with positive scores are shown in green, and those with negative scores in red.
+    Tokens with positive scores are shown in green; those with negative scores in red.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     tokens = token_df["Token"]
@@ -272,15 +274,19 @@ if st.button("Predict Sentiment"):
         if nb_variant == "Gaussian":
             X_new = X_new.toarray()
         
-        # Obtain class probability estimates from the model
+        # Obtain overall class probability estimates from the model
         proba = model.predict_proba(X_new)[0]
         pos_index = list(model.classes_).index("Positive")
         neg_index = list(model.classes_).index("Negative")
         
-        # Use the slider to decide if the difference is small enough to be considered Neutral
-        if abs(proba[pos_index] - proba[neg_index]) < neutral_threshold:
-            overall_sentiment = "Neutral"
+        # For Gaussian NB, decide using probabilities; for discrete models, we will recalc later.
+        if nb_variant == "Gaussian":
+            if abs(proba[pos_index] - proba[neg_index]) < neutral_threshold:
+                overall_sentiment = "Neutral"
+            else:
+                overall_sentiment = model.predict(X_new)[0]
         else:
+            # For discrete models, we use the token-level calculation below to override.
             overall_sentiment = model.predict(X_new)[0]
         
         st.subheader("Prediction")
@@ -295,13 +301,13 @@ if st.button("Predict Sentiment"):
         else:
             st.write("The review is classified as **Neutral** because the evidence is too balanced to favour one side.")
         
-        # Provide a note on model differences
+        # Explain differences for model variants
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** In this model, words are treated as binary (present or absent). Each word contributes its full effect regardless of frequency.")
+            st.write("**Note for Bernoulli NB:** In this model, words are treated as binary features (present or absent). Each word contributes its full effect regardless of frequency.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** This model considers how often words appear; words that appear more frequently have a larger impact.")
+            st.write("**Note for Multinomial NB:** This model considers word frequency; words that appear more often have a larger impact on the classification.")
         
-        # For discrete NB models, display token-level analysis and a worked numerical calculation.
+        # For discrete NB models, perform token-level analysis and recalculate overall sentiment.
         if nb_variant in ["Multinomial", "Bernoulli"]:
             token_df = get_token_sentiments(tokens, model, vectoriser)
             if not token_df.empty:
@@ -316,17 +322,22 @@ if st.button("Predict Sentiment"):
                 
                 # --- Worked Numerical Calculation for Discrete NB ---
                 st.markdown("### Worked Numerical Calculation (Discrete NB)")
-                # The log prior difference reflects the model's inherent bias from the training data.
+                # The log prior difference shows the model's inherent bias.
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
-                # The sum of the word contributions shows the total evidence from the review.
+                # The sum of word contributions shows the evidence from the review.
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
-                # If the overall difference is very small (within the threshold), force it to 0 and mark as Neutral.
+                # Force neutrality if the overall log difference is within the threshold.
                 if abs(overall_log_diff) < neutral_threshold:
                     overall_log_diff = 0
-                    overall_sentiment_calculation = "Neutral"
+                    overall_sentiment = "Neutral"
                 else:
-                    overall_sentiment_calculation = "Positive" if overall_log_diff > 0 else "Negative"
+                    overall_sentiment = "Positive" if overall_log_diff > 0 else "Negative"
+                
+                # Override the earlier printed prediction for discrete models
+                st.subheader("Prediction (Recalculated from Token Analysis)")
+                st.write(f"**Sentiment:** {overall_sentiment}")
+                
                 calc_str = (
                     f"**Log prior difference (Positive - Negative):** {log_prior_diff:.4f}\n\n"
                     "**Word Contributions:**\n"
@@ -348,7 +359,7 @@ if st.button("Predict Sentiment"):
             else:
                 st.write("No token-level sentiment data available.")
         
-        # For Gaussian NB, display a pie chart and an overall probability calculation.
+        # For Gaussian NB, display a pie chart and overall probability calculation.
         elif nb_variant == "Gaussian":
             st.subheader("Gaussian NB: Class Probability Distribution")
             st.write("Gaussian NB uses continuous features. Below is the distribution of class probabilities:")
@@ -363,7 +374,7 @@ if st.button("Predict Sentiment"):
             st.write(f"**Probability for Negative:** {proba[neg_index]:.4f}")
             diff = proba[pos_index] - proba[neg_index]
             st.write(f"**Difference (Positive - Negative):** {diff:.4f}")
-            st.write("This difference indicates which class is more likely. A positive difference favours a Positive classification; a negative difference favours Negative. If the difference is very small, the review is considered Neutral.")
+            st.write("This difference shows which class is more likely. A positive difference favours a Positive classification; a negative difference favours a Negative classification. If the difference is very small, the review is considered Neutral.")
         else:
             st.write("Token-level sentiment analysis is not available for the selected model.")
 
