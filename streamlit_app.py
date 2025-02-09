@@ -15,16 +15,21 @@
 # 1. Cleans and prepares the text (it lowers the case, removes common words, and simplifies words).
 # 2. Trains the model using a small set of example positive and negative reviews.
 # 3. Lets you enter your own review to see what the model thinks.
-# 4. Shows simple charts and numbers to explain why the model made its choice.
+# 4. Shows charts and simple numbers to explain why the decision was made.
 #
-# For the Multinomial and Bernoulli models, the app looks at each word in your review and
-# adds up how much each word pushes the decision toward positive or negative.
-# If this total is very small (within a chosen limit), the review is labeled as Neutral.
+# In simple terms, Naive Bayes uses the words in your review to guess the sentiment.
+# Even though it makes a “naive” assumption—that each word acts on its own—it works very well.
 #
-# For the Gaussian model, a pie chart shows the percentage chance for each class.
+# For example, Gmail’s spam filter used Naive Bayes because its simple approach made it fast
+# and effective, even when dealing with millions of messages.
 #
-# Use the slider to adjust the “Neutrality Threshold.” If the difference between the
-# positive and negative scores is small enough, the review is marked as Neutral.
+# The three common versions are:
+# - Multinomial NB: Looks at how often words appear.
+# - Bernoulli NB: Checks whether words appear or not (like a checklist).
+# - Gaussian NB: Works with numbers and measurements.
+#
+# A slider lets you adjust the "Neutrality Threshold." If the difference between the
+# positive and negative scores is very small (or exactly at the threshold), the review is marked as Neutral.
 #**********************************************
 
 import streamlit as st
@@ -48,7 +53,7 @@ def custom_tokenizer(text):
     Clean the text by:
     - Changing everything to lowercase.
     - Picking out words.
-    - Removing common words and some extra words like "food" or "service".
+    - Removing common words and extra words like "food" or "service".
     - Simplifying words to their basic form.
     Returns a list of clean words.
     """
@@ -129,9 +134,8 @@ def get_training_data():
 def train_model(nb_variant):
     """
     Teach the model using the example reviews.
-    We use a tool that converts text into numbers.
-    Based on your choice, we train one of three models.
-    Returns the trained model and the tool that turned text into numbers.
+    We convert the text into numbers and then train one of three models.
+    Returns the trained model and the tool (vectoriser) that converts text to numbers.
     """
     from sklearn.feature_extraction.text import TfidfVectorizer
     df = get_training_data()
@@ -160,9 +164,12 @@ def train_model(nb_variant):
 # =============================================================================
 def get_token_sentiments(tokens, model, vectoriser):
     """
-    For the Multinomial and Bernoulli models, this function checks each word
-    to see how much it pushes the review towards positive or negative.
-    It returns a list of words with a simple score.
+    For Multinomial and Bernoulli models, this function checks each word
+    to see how much it pushes the review toward positive or negative.
+    It returns a table of words and a simple score.
+    
+    (Think of it like a word counter that remembers in which reviews a word
+    often appears. This is similar to how Gmail’s spam filter spots spam words.)
     """
     token_sentiments = []
     classes = model.classes_
@@ -206,19 +213,35 @@ def plot_token_sentiments(token_df):
     st.pyplot(fig)
 
 # =============================================================================
-# Learn About Naive Bayes (Simple Explanation)
+# Learn About Naive Bayes (Plain Language Explanation)
 # =============================================================================
 with st.expander("Learn About Naive Bayes"):
     st.markdown(r"""
-    **What is Naive Bayes?**
+    **Naive Bayes in Simple Terms:**
     
-    Naive Bayes is a simple way to decide if a review is good or bad.
-    It looks at the words in the review and uses them to make a guess.
-    
-    **How does it work?**
-    - It starts with a basic guess.
-    - Then, it checks each word to see if it makes the review seem good or bad.
-    - Finally, it adds everything up to decide if the review is positive or negative.
+    - **Simple but Powerful:**  
+      Naive Bayes is a simple algorithm that still works very well. Instead of drawing complicated boundaries between classes, it
+      simply calculates which outcome is most likely based on the words in a review.
+      
+    - **Real-World Success:**  
+      For example, Gmail’s early spam filter used Naive Bayes. Its simple approach made it fast and effective, even with millions
+      of emails.
+      
+    - **How It Works:**  
+      1. **Learning:** The model learns from examples. It counts how often each word appears in positive and negative reviews.
+      2. **Predicting:** When a new review comes in, it checks the words and combines the learned counts to guess if the review is
+         positive or negative.
+      
+    - **The 'Naive' Part:**  
+      The model assumes each word works independently. In real language, words often work together (like “not delicious”), but
+      even with this assumption, the algorithm does a great job.
+      
+    - **Different Versions:**  
+      - **Multinomial NB:** Think of it as a word counter that cares about how many times a word appears.
+      - **Bernoulli NB:** Works like a checklist—only cares if a word is there or not.
+      - **Gaussian NB:** Used when your data are numbers instead of words.
+      
+    This simplicity is why Naive Bayes is used in so many places—from spam filtering to analyzing customer reviews.
     """, unsafe_allow_html=True)
 
 # =============================================================================
@@ -228,8 +251,8 @@ st.sidebar.header("Model Settings")
 nb_variant = st.sidebar.selectbox("Choose a Naive Bayes Model", options=["Multinomial", "Bernoulli", "Gaussian"])
 st.sidebar.markdown("""
 **Neutrality Threshold:**  
-Use this slider to decide when a review is too balanced.
-If the difference between the positive and negative scores is very small, the review will be marked as Neutral.
+Use this slider to decide when a review is too balanced.  
+If the difference between the positive and negative scores is very small, the review is marked as Neutral.
 """)
 neutral_threshold = st.sidebar.slider("Neutrality Threshold (small number)", 0.0, 1.0, 0.1, step=0.01)
 
@@ -239,9 +262,13 @@ neutral_threshold = st.sidebar.slider("Neutrality Threshold (small number)", 0.0
 st.title("Naive Bayes Demo App for Sentiment Analysis")
 st.markdown("""
 Type a restaurant review below and choose a model to see:
-- The final decision (Positive, Negative, or Neutral).
-- How each word in your review affected the decision.
-- A simple number breakdown showing why the decision was made.
+- The final decision: Positive, Negative, or Neutral.
+- How each word influenced the decision.
+- A simple breakdown of the numbers behind the decision.
+  
+**Understanding the Process:**  
+Imagine you’re a food critic. You know that words like "delicious" or "fantastic" are common in good reviews,
+while words like "bland" or "disappointing" appear in bad reviews. The model uses this idea to decide the sentiment.
 """)
 
 # Train the model using the chosen variant
@@ -257,9 +284,9 @@ if st.button("Predict Sentiment"):
     tokens = custom_tokenizer(user_review)
     if not tokens:
         st.subheader("Prediction")
-        st.write("**Sentiment:** Neutral (Not enough words)")
+        st.write("**Sentiment:** Neutral (Not enough useful words)")
         st.markdown("### Explanation")
-        st.write("No useful words were found in your review. This might happen if all words were too common. In this case, the review is marked as Neutral.")
+        st.write("No important words were found in your review. When that happens, the review is marked as Neutral.")
     else:
         X_new = vectoriser.transform([user_review])
         if nb_variant == "Gaussian":
@@ -304,19 +331,19 @@ if st.button("Predict Sentiment"):
         elif overall_sentiment == "Negative":
             st.write("The review is seen as **Negative** because the words mostly point to a bad experience.")
         else:
-            st.write("The review is marked as **Neutral** because it is very balanced.")
+            st.write("The review is marked as **Neutral** because the evidence is very balanced.")
         
         # Additional notes for each model type
         if nb_variant == "Bernoulli":
-            st.write("**Note for Bernoulli NB:** Each word counts once, no matter how many times it appears.")
+            st.write("**Note for Bernoulli NB:** Each word counts just once, regardless of how many times it appears.")
         elif nb_variant == "Multinomial":
-            st.write("**Note for Multinomial NB:** Words that appear more often have a bigger effect.")
+            st.write("**Note for Multinomial NB:** Words that appear more often have a bigger impact.")
         
         # For Multinomial and Bernoulli models, show the word-by-word breakdown.
         if nb_variant in ["Multinomial", "Bernoulli"] and not token_df.empty:
             st.subheader("Word Influence")
             st.write("""
-            Below is a list of words from your review and a simple score:
+            Here is a list of words from your review and a simple score:
             - A positive score means the word pushes the review toward positive.
             - A negative score means the word pushes it toward negative.
             """)
@@ -325,7 +352,7 @@ if st.button("Predict Sentiment"):
             
             # Show the simple calculation behind the decision
             st.markdown("### Simple Calculation")
-            st.write(f"**Starting bias:** {log_prior_diff:.4f}")
+            st.write(f"**Starting bias (base preference):** {log_prior_diff:.4f}")
             st.write("**Word contributions:**")
             for _, row in token_df.iterrows():
                 st.write(f"- {row['Token']}: {row['Score']:.4f}")
