@@ -6,7 +6,7 @@ from sklearn.naive_bayes import MultinomialNB, BernoulliNB, GaussianNB
 # ----------------------------
 # Helper function to train the classifier
 # ----------------------------
-@st.cache(allow_output_mutation=True)
+@st.cache_resource
 def train_model(nb_variant):
     # A small sample dataset of restaurant reviews
     data = {
@@ -82,8 +82,6 @@ Enter a review below and see how the classifier makes its prediction!
 # ----------------------------
 st.sidebar.header("Configuration")
 nb_variant = st.sidebar.selectbox("Select Naive Bayes Variant", options=["Multinomial", "Bernoulli", "Gaussian"])
-
-# (Optional) You can add more configuration options here.
 
 # Train the model based on the selected variant.
 model, vectorizer = train_model(nb_variant)
