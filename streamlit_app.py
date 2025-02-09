@@ -264,8 +264,8 @@ if st.button("Predict Sentiment"):
                 A positive score (highlighted in green) indicates a positive association, while a negative score (highlighted in red)
                 indicates a negative association.
                 """)
-                # Reset the index to remove default row numbers.
-                st.dataframe(token_df.reset_index(drop=True))
+                # Use st.table with styling to hide the index.
+                st.table(token_df.reset_index(drop=True).style.hide_index())
                 plot_token_sentiments(token_df)
             else:
                 st.write("No token-level sentiment data available.")
