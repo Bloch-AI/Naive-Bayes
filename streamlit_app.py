@@ -1,9 +1,9 @@
 #**********************************************
 # Naive Bayes Demo App
-# Version 1.1
-# 5th September 2024
-# Your Name
-# your.email@example.com
+# Version 1.0
+# 9th February 2025
+# Jamie Crossman-Smith
+# jamie@bloch.ai
 #**********************************************
 # This Streamlit app shows how Naive Bayes can be used to decide if a restaurant review
 # is positive or negative. You can try out three types of models:
@@ -392,15 +392,15 @@ if st.button("Predict Sentiment"):
             st.write(f"Difference: {proba[pos_index] - proba[neg_index]:.4f}")
             st.write(f"Threshold: ±{neutral_threshold:.4f}")
 
+            # ================================
+            # Article Link Section (at the bottom)
+            # ================================
+            st.markdown("---")
+            st.markdown("### Further Reading")
+            st.markdown(
+                "For a detailed discussion on Naive Bayes, check out my [Medium article](https://blochai.medium.com/the-paradox-of-naive-bayes-when-simple-becomes-sophisticated-5b86acb25696)."
+            )
 
-    # ================================
-    # Article Link Section (at the bottom)
-    # ================================
-    st.markdown("---")
-    st.markdown("### Further Reading")
-    st.markdown(
-        "For a detailed discussion on Naive Bayes, check out my [Medium article](https://blochai.medium.com/the-paradox-of-naive-bayes-when-simple-becomes-sophisticated-5b86acb25696)."
-    )
 # =============================================================================
 # Footer Section
 # =============================================================================
