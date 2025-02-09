@@ -322,21 +322,25 @@ if st.button("Predict Sentiment"):
                 
                 # --- Worked Numerical Calculation for Discrete NB ---
                 st.markdown("### Worked Numerical Calculation (Discrete NB)")
-                # The log prior difference shows the model's inherent bias.
                 log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
-                # The sum of word contributions shows the evidence from the review.
                 token_sum = token_df["Score"].sum()
                 overall_log_diff = log_prior_diff + token_sum
-                # Force neutrality if the overall log difference is within the threshold.
-                if abs(overall_log_diff) <= neutral_threshold:  # Note the use of '<='
+                
+                # Debug outputs to check values
+                st.write(f"log_prior_diff: {log_prior_diff:.4f}")
+                st.write(f"token_sum: {token_sum:.4f}")
+                st.write(f"overall_log_diff: {overall_log_diff:.4f}")
+                st.write(f"neutral_threshold: {neutral_threshold:.4f}")
+                
+                if abs(overall_log_diff) <= neutral_threshold:  # using <= here
                     overall_log_diff = 0
                     overall_sentiment = "Neutral"
                 else:
                     overall_sentiment = "Positive" if overall_log_diff > 0 else "Negative"
                 
-                # Override the earlier printed prediction for discrete models
                 st.subheader("Prediction (Recalculated from Token Analysis)")
                 st.write(f"**Sentiment:** {overall_sentiment}")
+
 
                 
                 # Override the earlier printed prediction for discrete models
