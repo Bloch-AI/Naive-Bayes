@@ -18,7 +18,7 @@
 # 4. Shows charts and simple numbers to explain why the decision was made.
 #
 # In simple terms, Naive Bayes uses the words in your review to guess the sentiment.
-# Even though it makes a “naive” assumption—that each word acts on its own—it works very well.
+# Even though it makes a "naive" assumption, that each word acts on its own, it works very well.
 #
 # For example, Gmail’s spam filter used Naive Bayes because its simple approach made it fast
 # and effective, even when dealing with millions of messages.
@@ -333,18 +333,22 @@ with st.expander("Learn About Naive Bayes"):
       
     - **Different Versions:**  
       - **Multinomial NB:** Uses weighted word counts (here, TF-IDF weights rather than raw counts, which down-weights very common words).
-      - **Bernoulli NB:** Works like a checklist—only cares if a word is there or not, so it uses binary 0/1 features here.
+      - **Bernoulli NB:** Works like a checklist: it only cares if a word is there or not, so it uses binary 0/1 features here.
       - **Gaussian NB:** Assumes features are numbers that follow a bell-curve (normal) distribution. Text features don't really do that,
         so this variant is included for comparison/learning and is not the recommended choice for text.
       
-    This simplicity is why Naive Bayes is used in many applications—from spam filtering to analyzing customer reviews.
+    This simplicity is why Naive Bayes is used in many applications, from spam filtering to analysing customer reviews.
     """, unsafe_allow_html=True)
 
 # =============================================================================
 # Sidebar: Model Settings
 # =============================================================================
 st.sidebar.header("Model Settings")
-nb_variant = st.sidebar.selectbox("Choose a Naive Bayes Model", options=["Multinomial", "Bernoulli", "Gaussian"])
+nb_variant = st.sidebar.selectbox(
+    "Choose a Naive Bayes Model",
+    options=["Multinomial", "Bernoulli", "Gaussian"],
+    help="Pick how the model turns words into a decision. Multinomial uses weighted word counts, Bernoulli uses a yes/no checklist, and Gaussian treats the numbers as measurements. For text, Multinomial or Bernoulli are the usual choices.",
+)
 st.sidebar.markdown("""
 **Model Options Explained:**
 
@@ -411,14 +415,41 @@ If the difference between the positive and negative scores is very small (within
 this threshold), the review is marked as Neutral.  
 _Units: {threshold_units}_
 """)
-neutral_threshold = st.sidebar.slider("Neutrality Threshold", 0.0, threshold_max, threshold_default, step=0.01)
+neutral_threshold = st.sidebar.slider(
+    "Neutrality Threshold",
+    0.0, threshold_max, threshold_default, step=0.01,
+    help=f"If the gap between the positive and negative scores is within +/- this value, the review is called Neutral instead of being forced one way. Units: {threshold_units}. A bigger threshold means more reviews come out as Neutral.",
+)
 
 # Input area for your review
 st.subheader("Enter a Restaurant Review")
 default_review = "delicious food but very slow"
-user_review = st.text_area("Your Review:", default_review)
 
-if st.button("Predict Sentiment"):
+# Keep the review text in session state so the example buttons below can
+# pre-fill it for learners who want to experiment quickly.
+if "user_review" not in st.session_state:
+    st.session_state.user_review = default_review
+
+st.caption("Try one of these examples to get started, then edit the text or write your own.")
+example_reviews = {
+    "Clearly positive": "Absolutely delicious food and wonderful, friendly service.",
+    "Clearly negative": "Cold, bland food and very slow, rude service.",
+    "Negation (tricky)": "The food was not delicious and the service was slow.",
+    "Mixed": "delicious food but very slow",
+}
+example_cols = st.columns(len(example_reviews))
+for col, (label, review) in zip(example_cols, example_reviews.items()):
+    if col.button(label, help=f"Fill the box with: {review}"):
+        st.session_state.user_review = review
+        st.rerun()
+
+user_review = st.text_area(
+    "Your Review:",
+    key="user_review",
+    help="Write a restaurant review in plain English. The model reads the words here (and pairs of words, such as 'not delicious') to decide the sentiment.",
+)
+
+if st.button("Predict Sentiment", help="Work out the sentiment of the review above and show why the model reached that decision."):
     # Clean the review text
     tokens = custom_tokenizer(user_review)
     if not tokens:
@@ -472,14 +503,35 @@ if st.button("Predict Sentiment"):
         st.subheader("Prediction")
         st.write(f"**Sentiment:** {overall_sentiment}")
         
-        # Simple explanation of the result
+        # Result-specific explanation that names the words which actually drove
+        # this decision, rather than a fixed sentence. This closes the loop for a
+        # learner between the bar chart/table and the verdict.
         st.markdown("### Explanation")
-        if overall_sentiment == "Positive":
-            st.write("The review is seen as **Positive** because the words mostly point to a good experience.")
-        elif overall_sentiment == "Negative":
-            st.write("The review is seen as **Negative** because the words mostly point to a bad experience.")
+        if nb_variant == "Gaussian":
+            if overall_sentiment == "Neutral":
+                st.write(f"The positive and negative chances are very close (difference {abs(pos_prob - neg_prob):.4f}), within the threshold, so the review is marked as **Neutral**.")
+            else:
+                stronger = "positive" if pos_prob > neg_prob else "negative"
+                st.write(f"The model gives a {stronger} chance of {max(pos_prob, neg_prob):.1%} against {min(pos_prob, neg_prob):.1%} the other way, so the review is seen as **{overall_sentiment}**.")
+            st.caption("Gaussian NB treats the numbers as measurements on a bell curve. For text this is only a rough comparison, not the recommended choice.")
         else:
-            st.write("The review is marked as **Neutral** because the evidence is very balanced.")
+            # Build a short phrase naming the features that pushed hardest.
+            if not token_df.empty:
+                top_pos = token_df[token_df["Score"] > 0].sort_values("Score", ascending=False)
+                top_neg = token_df[token_df["Score"] < 0].sort_values("Score")
+                top_pos_words = ", ".join(f"'{r['Feature']}' (+{r['Score']:.2f})" for _, r in top_pos.head(2).iterrows())
+                top_neg_words = ", ".join(f"'{r['Feature']}' ({r['Score']:.2f})" for _, r in top_neg.head(2).iterrows())
+                if overall_sentiment == "Neutral":
+                    st.write("The review is marked as **Neutral** because the positive and negative pulls are very close (within the threshold), so the evidence is balanced.")
+                elif overall_sentiment == "Positive":
+                    st.write(f"The review is seen as **Positive** because the positive words outweigh the negative ones. Strongest pushes: {top_pos_words or 'none'}. Pushing the other way: {top_neg_words or 'none'}.")
+                else:
+                    st.write(f"The review is seen as **Negative** because the negative words outweigh the positive ones. Strongest pushes: {top_neg_words or 'none'}. Pushing the other way: {top_pos_words or 'none'}.")
+            else:
+                if overall_sentiment == "Neutral":
+                    st.write("The review is marked as **Neutral** because the evidence is very balanced.")
+                else:
+                    st.write(f"The review is seen as **{overall_sentiment}** based on the overall score.")
         
         # Additional notes for each model type
         if nb_variant == "Bernoulli":
@@ -494,13 +546,14 @@ if st.button("Predict Sentiment"):
             Here is a list of features (words or two-word phrases) from your review and how much each pushes the decision.
             - **PerUnitScore:** how strongly the feature leans positive vs negative (log P(feature|Positive) - log P(feature|Negative)).
             - **Value:** the weight the model actually uses for this review (TF-IDF weight, or 1 for binary Bernoulli).
-            - **Score:** PerUnitScore × Value — the real contribution to the decision. Green = positive push, red = negative push.
+            - **Score:** PerUnitScore × Value, the real contribution to the decision. Green = positive push, red = negative push.
             """)
-            st.dataframe(token_df, hide_index=True)
+            st.dataframe(token_df, hide_index=True, width="stretch")
             plot_token_sentiments(token_df)
             
             # Show the simple calculation behind the decision
             st.markdown("### Simple Calculation")
+            st.caption("How to read this: the model adds up a starting bias plus each feature's contribution. The total is the 'overall effect'. If the total is above 0 it leans positive, below 0 it leans negative. If it is within +/- the threshold, it is too close to call and becomes Neutral. The further the total is from 0, the more confident the decision.")
             st.write(f"**Starting bias (base preference):** {log_prior_diff:.4f}")
             st.write("**Feature contributions (PerUnitScore × Value):**")
             for _, row in token_df.iterrows():
@@ -521,6 +574,7 @@ if st.button("Predict Sentiment"):
         # For Gaussian NB, show a simple pie chart (reuse the probability we already computed).
         elif nb_variant == "Gaussian":
             st.subheader("Probability Breakdown")
+            st.caption("Gaussian NB works with probabilities (0 to 1) rather than the log-score used by the other models, so its numbers and threshold are on a different scale. Use this view to compare, not to match the figures above.")
             fig, ax = plt.subplots()
             ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', 
                    colors=['green' if c == "Positive" else 'red' for c in model.classes_])
