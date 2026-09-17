@@ -38,9 +38,15 @@ import re
 import matplotlib.pyplot as plt
 import nltk
 
-# Download NLTK data needed for simplifying words
-nltk.download('wordnet', quiet=True)
-nltk.download('omw-1.4', quiet=True)
+
+@st.cache_resource
+def ensure_nltk_data():
+    nltk.download('wordnet', quiet=True)
+    nltk.download('omw-1.4', quiet=True)
+    return True
+
+
+ensure_nltk_data()
 
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
@@ -52,8 +58,11 @@ def custom_tokenizer(text):
     """
     Clean the text by:
     - Changing everything to lowercase.
-    - Picking out words.
-    - Removing common words and extra words like "food" or "service".
+    - Picking out words (including short phrases such as "not delicious" once
+      bigrams are enabled downstream).
+    - Removing common words and extra words like "food" or "service", but
+      KEEPING negators and intensifiers ("not", "no", "very", ...) because they
+      carry sentiment.
     - Simplifying words to their basic form.
     Returns a list of clean words.
     """
@@ -63,6 +72,10 @@ def custom_tokenizer(text):
         nltk_stopwords = set(stopwords.words('english'))
     except LookupError:
         nltk_stopwords = set()
+    # Keep negators and intensifiers: they carry sentiment (e.g. "not delicious",
+    # "very good"). Removing them would flip the meaning of a review.
+    sentiment_keep = {"not", "no", "nor", "very", "too", "so", "never", "without", "n't"}
+    nltk_stopwords = nltk_stopwords - sentiment_keep
     domain_stopwords = {"food", "service", "restaurant", "meal", "dining"}
     all_stopwords = nltk_stopwords.union(domain_stopwords)
     tokens = [token for token in tokens if token not in all_stopwords]
@@ -135,64 +148,144 @@ def train_model(nb_variant):
     """
     Teach the model using the example reviews.
     We convert the text into numbers and then train one of three models.
-    Returns the trained model and the tool (vectoriser) that converts text to numbers.
+    Returns the trained model, the tool (vectoriser) that converts text to numbers,
+    and the cross-validated accuracy measured on the training set.
+
+    Implementation notes (methodology):
+    - Bernoulli NB expects BINARY presence/absence features, so we build a binary
+      vectoriser for that variant. Feeding it TF-IDF weights is a misuse that makes
+      the "checklist" metaphor inaccurate.
+    - Multinomial NB uses TF-IDF weights, which re-weight words by how rare they are
+      across reviews (inverse document frequency). This is standard for text
+      classification but is NOT plain word counting; the UI explains the difference.
+    - Bigrams (ngram_range=(1,2)) are added so negation phrases like "not delicious"
+      are seen as a single feature instead of being split into two unrelated words.
+      This is the biggest lever for sentiment accuracy.
+    - Gaussian NB assumes normally-distributed numeric features; TF-IDF values are
+      sparse and skewed, so this is an *illustrative* misuse included for comparison,
+      not a recommended configuration.
     """
     from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.model_selection import cross_val_score
     df = get_training_data()
-    vectoriser = TfidfVectorizer(tokenizer=custom_tokenizer, lowercase=False)
+    binary = (nb_variant == "Bernoulli")
+    vectoriser = TfidfVectorizer(
+        tokenizer=custom_tokenizer,
+        lowercase=False,
+        ngram_range=(1, 2),
+        binary=binary,
+        token_pattern=None,
+    )
     X = vectoriser.fit_transform(df['review'])
-    y = df['sentiment']
+    # to_numpy(dtype=object) gives a plain numpy array of strings; .values can return a
+    # pyarrow-backed array that some sklearn helpers (e.g. cross_val_score joblib
+    # indexing) cannot slice, which would silently fail and hide the accuracy metric.
+    y = df['sentiment'].to_numpy(dtype=object)
     if nb_variant == "Multinomial":
         from sklearn.naive_bayes import MultinomialNB
         model = MultinomialNB()
         model.fit(X, y)
+        eval_X = X
     elif nb_variant == "Bernoulli":
         from sklearn.naive_bayes import BernoulliNB
         model = BernoulliNB()
         model.fit(X, y)
+        eval_X = X
     elif nb_variant == "Gaussian":
         from sklearn.naive_bayes import GaussianNB
         model = GaussianNB()
         model.fit(X.toarray(), y)
+        eval_X = X.toarray()
     else:
         st.error("Unsupported Naive Bayes variant selected.")
-        return None, None
-    return model, vectoriser
+        return None, None, None
+    try:
+        accuracy = float(cross_val_score(model, eval_X, y, cv=4, scoring='accuracy').mean())
+    except Exception:
+        accuracy = None
+    return model, vectoriser, accuracy
 
 # =============================================================================
 # Word-Level Influence (for Multinomial and Bernoulli models)
 # =============================================================================
-def get_token_sentiments(tokens, model, vectoriser):
+def get_token_sentiments(review_text, model, vectoriser):
     """
-    For Multinomial and Bernoulli models, this function checks each word
-    to see how much it pushes the review toward positive or negative.
-    It returns a table of words and a simple score.
-    
-    (Think of it like a word counter that remembers in which reviews a word
-    often appears. This is similar to how Gmail’s spam filter spots spam words.)
-    """
-    token_sentiments = []
-    classes = model.classes_
-    if "Positive" in classes and "Negative" in classes:
-        pos_index = list(classes).index("Positive")
-        neg_index = list(classes).index("Negative")
-        unique_tokens = sorted(set(tokens))
-        for token in unique_tokens:
-            if token in vectoriser.vocabulary_:
-                col_index = vectoriser.vocabulary_[token]
-                lp_token_pos = model.feature_log_prob_[pos_index, col_index]
-                lp_token_neg = model.feature_log_prob_[neg_index, col_index]
-                diff = lp_token_pos - lp_token_neg
-                token_sentiments.append({"Token": token, "Score": diff})
-            else:
-                token_sentiments.append({"Token": token, "Score": 0})
-        df = pd.DataFrame(token_sentiments)
-        return df.sort_values("Score")
-    else:
-        return pd.DataFrame()
+    For Multinomial and Bernoulli models, this function works out how much each
+    feature (a word or a bigram such as "not delicious") pushes the review toward
+    positive or negative, and returns the per-feature contribution table along
+    with the numbers needed to reconcile that table with the model's real decision.
 
-# =============================================================================
-# Simple Bar Chart for Word Influence
+    Returns a dict with:
+      - df: per-feature table (Feature, Value, PerUnitScore, Score) for PRESENT features.
+      - log_prior_diff: class prior difference (log P(Positive) - log P(Negative)).
+      - present_sum: sum of present features' Score contributions.
+      - absent_diff: extra contribution from ABSENT features (Bernoulli only; for
+        Bernoulli, the absence of an expected word also shifts the score). 0 for Multinomial.
+      - total_diff: the AUTHORITATIVE decision difference taken straight from the
+        model's own joint log-likelihood, so the displayed math always reconciles:
+        total_diff == log_prior_diff + present_sum + absent_diff.
+
+    The contribution of a present feature is its log-probability difference
+    (log P(feature|Positive) - log P(feature|Negative)) MULTIPLIED BY the actual
+    feature value the model uses for this review (TF-IDF weight for Multinomial,
+    1 for binary Bernoulli). This makes the displayed per-feature math identical to
+    the math the model really performs, so learners see the true decision breakdown
+    rather than an approximation. Without this weighting, a word repeated three
+    times would be shown as contributing only once, which is misleading.
+    """
+    import numpy as np
+    empty_result = {
+        "df": pd.DataFrame(columns=["Feature", "Value", "PerUnitScore", "Score"]),
+        "log_prior_diff": 0.0,
+        "present_sum": 0.0,
+        "absent_diff": 0.0,
+        "total_diff": 0.0,
+    }
+    classes = model.classes_
+    if not ("Positive" in classes and "Negative" in classes):
+        return empty_result
+    pos_index = list(classes).index("Positive")
+    neg_index = list(classes).index("Negative")
+    row = vectoriser.transform([review_text])
+    feature_names = vectoriser.get_feature_names_out()
+    row_values = row.toarray()[0]
+    lp_pos = model.feature_log_prob_[pos_index]
+    lp_neg = model.feature_log_prob_[neg_index]
+    log_prior_diff = float(model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index])
+
+    # Per-feature contribution for PRESENT features.
+    present_cols = row_values.nonzero()[0]
+    contributions = []
+    for col_index in present_cols:
+        value = row_values[col_index]
+        per_unit = lp_pos[col_index] - lp_neg[col_index]
+        contributions.append({"Feature": feature_names[col_index], "Value": value, "PerUnitScore": per_unit, "Score": per_unit * value})
+    df = pd.DataFrame(contributions)
+    if not df.empty:
+        df = df.sort_values("Score")
+    present_sum = float(df["Score"].sum()) if not df.empty else 0.0
+
+    # For Bernoulli, ABSENT features also contribute: each absent feature adds
+    # log(1 - P(feature|y)) for each class, and the difference over all absent
+    # features shifts the decision. This is why a checklist model cares about
+    # what is NOT said, not just what is said.
+    is_bernoulli = type(model).__name__ == "BernoulliNB"
+    absent_diff = 0.0
+    if is_bernoulli:
+        with np.errstate(divide="ignore"):
+            log1mp_pos = np.log1p(-np.exp(lp_pos))
+            log1mp_neg = np.log1p(-np.exp(lp_neg))
+        per_feat_diff = row_values * (lp_pos - lp_neg) + (1.0 - row_values) * (log1mp_pos - log1mp_neg)
+        absent_diff = float(per_feat_diff.sum()) - present_sum
+
+    # Authoritative decision difference from the model itself.
+    try:
+        jll = model._joint_log_likelihood(row)[0]
+        total_diff = float(jll[pos_index] - jll[neg_index])
+    except Exception:
+        total_diff = log_prior_diff + present_sum + absent_diff
+
+    return {"df": df, "log_prior_diff": log_prior_diff, "present_sum": present_sum, "absent_diff": absent_diff, "total_diff": total_diff}
 # =============================================================================
 def plot_token_sentiments(token_df):
     """
@@ -201,14 +294,14 @@ def plot_token_sentiments(token_df):
     Red means it pushes toward negative.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
-    tokens = token_df["Token"]
+    features = token_df["Feature"]
     scores = token_df["Score"]
     colors = ['green' if score > 0 else 'red' if score < 0 else 'gray' for score in scores]
-    ax.bar(tokens, scores, color=colors)
+    ax.bar(features, scores, color=colors)
     ax.axhline(0, color='black', linewidth=0.8)
-    ax.set_xlabel("Word")
-    ax.set_ylabel("Score")
-    ax.set_title("How Each Word Affects the Sentiment")
+    ax.set_xlabel("Feature (word or bigram)")
+    ax.set_ylabel("Contribution to decision")
+    ax.set_title("How Each Feature Affects the Sentiment")
     plt.xticks(rotation=45, ha='right')
     st.pyplot(fig)
 
@@ -228,17 +321,21 @@ with st.expander("Learn About Naive Bayes"):
       of emails.
       
     - **How It Works:**  
-      1. **Learning:** The model learns from examples by counting how often each word appears in good and bad reviews.
-      2. **Predicting:** When a new review comes in, it checks the words and combines the counts to guess if the review is good or bad.
+      1. **Learning:** The model learns from examples by counting how often each word appears in good and bad reviews, then turns
+         those counts into probabilities.
+      2. **Predicting:** When a new review comes in, it checks the words and combines the probabilities to guess if the review is good or bad.
 
       
     - **The 'Naive' Part:**  
-      The model assumes each word works independently. In real language, words work together (like “not delicious”), but the model still does a great job.
+      The model assumes each word works independently. In real language, words work together (like “not delicious”), so the model
+      can be fooled. To reduce this, this app keeps small negators such as **"not"** and also creates **bigrams** (two-word phrases like
+      "not delicious") as extra features, so the model can learn that the phrase itself points negative.
       
     - **Different Versions:**  
-      - **Multinomial NB:** Think of it as a word counter that cares about how often words appear.
-      - **Bernoulli NB:** Works like a checklist—only cares if a word is there or not.
-      - **Gaussian NB:** Used when your data are numbers instead of words.
+      - **Multinomial NB:** Uses weighted word counts (here, TF-IDF weights rather than raw counts, which down-weights very common words).
+      - **Bernoulli NB:** Works like a checklist—only cares if a word is there or not, so it uses binary 0/1 features here.
+      - **Gaussian NB:** Assumes features are numbers that follow a bell-curve (normal) distribution. Text features don't really do that,
+        so this variant is included for comparison/learning and is not the recommended choice for text.
       
     This simplicity is why Naive Bayes is used in many applications—from spam filtering to analyzing customer reviews.
     """, unsafe_allow_html=True)
@@ -252,20 +349,15 @@ st.sidebar.markdown("""
 **Model Options Explained:**
 
 - **Multinomial NB:**  
-  Counts how often each word appears in the reviews. It is like keeping score of word frequencies.
+  Uses weighted word counts (TF-IDF weights, which down-weight very common words). Words that appear more often still have a bigger impact.
 
 - **Bernoulli NB:**  
-  Checks whether a word is present or not, like ticking off items on a checklist.
+  Checks whether a word is present or not, like ticking off items on a checklist. It uses binary 0/1 features.
 
 - **Gaussian NB:**  
-  Works with continuous numbers instead of word counts. It assumes the numbers follow a normal distribution.
+  Works with continuous numbers and assumes they follow a bell-curve (normal) distribution. Text features don't really
+  follow that distribution, so this variant is included for comparison/learning and is not the recommended choice for text.
 """)
-st.sidebar.markdown("""
-**Neutrality Threshold:**  
-Use this slider to decide when a review is too balanced.  
-If the difference between the positive and negative scores is very small, the review is marked as Neutral.
-""")
-neutral_threshold = st.sidebar.slider("Neutrality Threshold (small number)", 0.0, 1.0, 0.1, step=0.01)
 
 # =============================================================================
 # Main App Layout
@@ -282,8 +374,44 @@ Imagine you’re a food critic. You know that words like "delicious" or "fantast
 while words like "bland" or "disappointing" appear in bad reviews. The model uses this idea to decide the sentiment.
 """)
 
-# Train the model using the chosen variant
-model, vectoriser = train_model(nb_variant)
+# Train the model using the chosen variant (cached)
+model, vectoriser, cv_accuracy = train_model(nb_variant)
+
+# Show measured accuracy so users see how reliable the model really is.
+# Cross-validated accuracy is estimated on the small training set, so treat it as
+# a rough guide, not a production metric.
+if cv_accuracy is not None:
+    st.sidebar.markdown(f"""
+**Measured Accuracy (cross-validation):**  
+{cv_accuracy*100:.1f}%  
+_Estimated from the small built-in training set (40 reviews), so treat this as a rough guide, not a guarantee._
+""")
+else:
+    st.sidebar.markdown("""
+**Measured Accuracy:**  
+_Not available for this model._
+""")
+
+# Neutrality threshold. The units differ by model: for Multinomial/Bernoulli the
+# decision variable is a log-probability difference (can be larger than 1), while
+# for Gaussian it is a probability difference (always between 0 and 1). We label
+# the units so the slider means the same kind of "smallness" to the learner.
+if nb_variant == "Gaussian":
+    threshold_units = "probability difference (0 to 1)"
+    threshold_max = 0.5
+    threshold_default = 0.05
+else:
+    threshold_units = "log-probability difference (can be larger than 1)"
+    threshold_max = 5.0
+    threshold_default = 0.5
+st.sidebar.markdown(f"""
+**Neutrality Threshold:**  
+Use this slider to decide when a review is too balanced to call.  
+If the difference between the positive and negative scores is very small (within ±
+this threshold), the review is marked as Neutral.  
+_Units: {threshold_units}_
+""")
+neutral_threshold = st.sidebar.slider("Neutrality Threshold", 0.0, threshold_max, threshold_default, step=0.01)
 
 # Input area for your review
 st.subheader("Enter a Restaurant Review")
@@ -308,6 +436,10 @@ if st.button("Predict Sentiment"):
         pos_index = classes.index("Positive")
         neg_index = classes.index("Negative")
         
+        # Per-feature breakdown (Multinomial/Bernoulli only). Initialise early so the
+        # variable always exists regardless of which branch runs below.
+        token_df = pd.DataFrame(columns=["Feature", "Value", "PerUnitScore", "Score"])
+
         # Get the final decision based on the model type
         if nb_variant == "Gaussian":
             proba = model.predict_proba(X_new)[0]
@@ -319,11 +451,16 @@ if st.button("Predict Sentiment"):
             else:
                 overall_sentiment = "Positive" if diff > 0 else "Negative"
         else:
-            # For Multinomial and Bernoulli models, look at each word's influence.
-            token_df = get_token_sentiments(tokens, model, vectoriser)
-            log_prior_diff = model.class_log_prior_[pos_index] - model.class_log_prior_[neg_index]
-            token_sum = token_df["Score"].sum() if not token_df.empty else 0
-            overall_log_diff = log_prior_diff + token_sum
+            # For Multinomial and Bernoulli models, look at each feature's influence.
+            # The decision difference is taken straight from the model's own joint
+            # log-likelihood, so the displayed arithmetic reconciles exactly:
+            # total = log_prior + present_features + absent_features (Bernoulli).
+            result = get_token_sentiments(user_review, model, vectoriser)
+            token_df = result["df"]
+            log_prior_diff = result["log_prior_diff"]
+            present_sum = result["present_sum"]
+            absent_diff = result["absent_diff"]
+            overall_log_diff = result["total_diff"]
             
             # If the total effect is very small, mark as Neutral.
             if abs(overall_log_diff) <= neutral_threshold:
@@ -350,13 +487,14 @@ if st.button("Predict Sentiment"):
         elif nb_variant == "Multinomial":
             st.write("**Note for Multinomial NB:** Words that appear more often have a bigger impact.")
         
-        # For Multinomial and Bernoulli models, show the word-by-word breakdown.
+        # For Multinomial and Bernoulli models, show the feature-by-feature breakdown.
         if nb_variant in ["Multinomial", "Bernoulli"] and not token_df.empty:
-            st.subheader("Word Influence")
+            st.subheader("Feature Influence")
             st.write("""
-            Here is a list of words from your review and a simple score:
-            - A positive score means the word pushes the review toward positive.
-            - A negative score means the word pushes it toward negative.
+            Here is a list of features (words or two-word phrases) from your review and how much each pushes the decision.
+            - **PerUnitScore:** how strongly the feature leans positive vs negative (log P(feature|Positive) - log P(feature|Negative)).
+            - **Value:** the weight the model actually uses for this review (TF-IDF weight, or 1 for binary Bernoulli).
+            - **Score:** PerUnitScore × Value — the real contribution to the decision. Green = positive push, red = negative push.
             """)
             st.dataframe(token_df, hide_index=True)
             plot_token_sentiments(token_df)
@@ -364,24 +502,26 @@ if st.button("Predict Sentiment"):
             # Show the simple calculation behind the decision
             st.markdown("### Simple Calculation")
             st.write(f"**Starting bias (base preference):** {log_prior_diff:.4f}")
-            st.write("**Word contributions:**")
+            st.write("**Feature contributions (PerUnitScore × Value):**")
             for _, row in token_df.iterrows():
-                st.write(f"- {row['Token']}: {row['Score']:.4f}")
-            st.write(f"**Total word effect:** {token_sum:.4f}")
-            st.write(f"**Overall effect:** {overall_log_diff:.4f}")
+                st.write(f"- {row['Feature']}: {row['PerUnitScore']:.4f} × {row['Value']:.4f} = {row['Score']:.4f}")
+            st.write(f"**Total present-feature effect:** {present_sum:.4f}")
+            if nb_variant == "Bernoulli":
+                st.write(f"**Absent-feature effect (words NOT in your review):** {absent_diff:.4f}")
+                st.write("_Bernoulli is a checklist model: the absence of an expected word also shifts the score, so this term is why the present features alone don't add up to the total._")
+            st.write(f"**Overall effect (bias + present + absent):** {overall_log_diff:.4f}")
             st.write(f"**Neutrality threshold:** ±{neutral_threshold:.4f}")
             
             if overall_sentiment == "Neutral":
-                st.write("The total effect was very small, so the review is marked as Neutral.")
+                st.write("The overall effect is within ± the threshold, so the review is marked as Neutral.")
             else:
                 direction = "above" if overall_log_diff > 0 else "below"
                 st.write(f"The overall effect is {direction} the threshold, so the review is classified as {overall_sentiment}.")
         
-        # For Gaussian NB, show a simple pie chart.
+        # For Gaussian NB, show a simple pie chart (reuse the probability we already computed).
         elif nb_variant == "Gaussian":
             st.subheader("Probability Breakdown")
             fig, ax = plt.subplots()
-            proba = model.predict_proba(X_new)[0]
             ax.pie(proba, labels=model.classes_, autopct='%1.1f%%', 
                    colors=['green' if c == "Positive" else 'red' for c in model.classes_])
             st.pyplot(fig)
